@@ -1,0 +1,3000 @@
+---
+# YAML header created by ox-ravel
+output: bookdown::html_document2
+title: INTEGRATION OF PROTEOMICS AND TRANSCRIPTOMICS DATA FOR ALZHEIMER'S DISEASE (AD) AND PROGRESSIVE SUPRANUCLEAR PALSY (PSP)
+---
+
+# Table of Contents
+
+-   [Differential Expression](#org38f337a)
+    -   [Preparations](#orgfdc4833)
+        -   [Libraries](#org0c1b0d7)
+        -   [Data](#org6d1cfa8)
+        -   [Cleanup of Contaminants and Reverse](#orgc6637a6)
+        -   [Set row names to Protein.IDs](#org3e56210)
+        -   [Select LFQ + mgis columns only](#orgd119606)
+            -   [mgis data](#orge993ded)
+    -   [TAMPOR](#org010a0ab)
+        -   [mgis useAllNonGIS=TRUE](#org058ab66)
+        -   [PCA of conditions](#orgf56d0b4)
+    -   [FC and adjusted p-values cutoffs](#orge7ed424)
+    -   [DE genes](#org04b46dd)
+        -   [Impute missing values](#org640a29b)
+        -   [Quantile normalization](#orgcc99a07)
+        -   [cra rearranged](#org6a7ce93)
+        -   [Design matrix and linear model fitting](#org7d49886)
+            -   [Create the design matrix](#org7c67b05)
+            -   [Fit linear model](#orgd18fae4)
+        -   [Significantly DE proteins: AD vs Control](#org725719e)
+        -   [Significantly DE proteins: PSP vs Control](#org55091e1)
+        -   [Significantly DE proteins: AD vs PSP](#org5af8c29)
+        -   [Table with log-FC and Adjusted p-values](#org8ce4fbe)
+        -   [List of up and downregulated DE proteins](#orgf7187dd)
+        -   [Clustering and heatmaps](#orgb863bec)
+            -   [Clustering AD-Control](#org4684532)
+            -   [Heatmap AD-Control](#org5aa6da5)
+            -   [Clustering PSP-Control](#org63869e7)
+            -   [Heatmap PSP-Control](#org49be284)
+            -   [Clustering AD-PSP](#orgd150783)
+            -   [Heatmap AD-PSP](#org4a16dea)
+        -   [Venn diagram for significantly DE proteins (adj. p-values<0.05, FC>0.3)](#org6f78884)
+            -   [All proteins](#org27b11b6)
+            -   [Upregulated proteins](#orgb84e571)
+            -   [Downregulated proteins](#orgccb053d)
+    -   [Enchanced Volcano plots](#org0375e18)
+    -   [Boxplots](#org1890d4b)
+        -   [AD vs Control](#org2e7947a)
+        -   [PSP vs Control](#org7e5dc89)
+        -   [AD vs PSP](#org33e3882)
+-   [Significantly DE transcripts](#org13baf61)
+    -   [Data](#org8077e23)
+    -   [Filtering to remove lowly expressed genes](#org54267f5)
+    -   [Convert counts to DGEList object](#org3f33086)
+    -   [Quality control](#org4ad396b)
+        -   [Library sizes and distribution plots](#org66ccd64)
+        -   [Multidimensional scaling plots](#orgd79c31e)
+    -   [Normalisation for composition bias](#orgaaa0116)
+    -   [Differential expression with edgeR](#org8eba10b)
+        -   [Create the design matrix](#orge340376)
+        -   [Data exploration](#org939d62f)
+        -   [Testing for differential expression](#orgdf581ea)
+        -   [Significantly DE transcripts: AD vs Control](#orgb0d008c)
+        -   [Significantly DE transcripts: PSP vs Control](#org33c99a0)
+        -   [Significantly DE transcripts: AD vs PSP](#org2632a86)
+        -   [Save lists of DE transcripts to Excel](#org466cb97)
+    -   [Clustering and heatmaps](#org2bab121)
+        -   [Clustering AD-Control](#orgd2be456)
+        -   [Heatmap AD-Control](#orgcfd1d66)
+        -   [Clustering PSP-Control](#orgcd70d48)
+        -   [Heatmap PSP-Control](#org53d287f)
+        -   [Clustering AD-PSP](#orge89176d)
+        -   [Heatmap AD-PSP](#orge8dbaa5)
+    -   [Venn diagram for significantly DE transcripts](#org972e616)
+        -   [All transcripts](#orgb360026)
+        -   [Upregulated transcripts](#org84260fb)
+        -   [Downregulated transcripts](#org699f15e)
+    -   [Enchanced Volcano plots](#org20fb498)
+    -   [Boxplots](#org93d155b)
+        -   [AD vs Control](#org664bf4f)
+        -   [PSP vs Control](#org9c18ace)
+        -   [AD vs PSP](#org5c45fbc)
+-   [Correlation Analysis](#orgd9cc114)
+    -   [A function to format the correlation matrix (for saving in CSV)](#orgffc2b73)
+    -   [Proteins](#org3a72481)
+        -   [Selecting top AD proteins from samples (all, AD, PSP, Control).](#org2c2190b)
+        -   [AD top proteins in all samples](#org4fa1f43)
+            -   [Save to CSV](#org5f9c635)
+    -   [Transcripts](#orga98faa0)
+        -   [AD top genes in all samples](#orgda52476)
+            -   [Save to CSV](#org77e10fd)
+    -   [Proteins vs Transcripts](#orgc1e5c3a)
+        -   [AD top proteins and genes (all samples)](#org780421a)
+            -   [Save to CSV](#orgeef50de)
+
+
+
+
+<a id="org38f337a"></a>
+
+# Differential Expression
+
+
+<a id="orgfdc4833"></a>
+
+## Preparations
+
+
+<a id="org0c1b0d7"></a>
+
+### Libraries
+
+```{r   }
+library(knitr) 
+```
+
+```{r   }
+library(pacman)
+
+p_load(plyr,
+       tidyverse,
+       VennDiagram,
+       pheatmap,
+       gplots,
+       gridExtra,
+       EnhancedVolcano,
+       venn,
+       xlsx,
+       gprofiler2,
+       corrplot,
+       PerformanceAnalytics,
+       Hmisc,
+       edgeR,
+       limma,
+       Glimma,
+       gplots,
+       org.Mm.eg.db,
+       RColorBrewer)
+
+p_load_gh("kassambara/ggpubr")
+source("./scripts/TAMPOR.R") 
+```
+
+
+<a id="org6d1cfa8"></a>
+
+### Data
+
+```{r   }
+Mayo_Proteomics_TC_traits <- read.csv("./data_prot/Mayo_Proteomics_TC_traits.csv",
+                                      sep = ",",
+                                      header = TRUE,
+                                      stringsAsFactors = FALSE) 
+```
+
+```{r   }
+Mayo_Proteomics_TC_proteinoutput <- read.table("./data_prot/Mayo_Proteomics_TC_proteinoutput.txt",
+                                               sep = "\t",
+                                               header = TRUE,
+                                               stringsAsFactors = FALSE) 
+```
+
+`Mayo_Proteomics_TC_proteinoutput` has dimensions: `r dim(Mayo_Proteomics_TC_proteinoutput) `.
+
+
+<a id="orgc6637a6"></a>
+
+### Cleanup of Contaminants and Reverse
+
+Format of the colnames: &ldquo;LFQ.intensity.mayo\_b5\_egis\_45&rdquo;
+
+```{r   }
+## Fitler out Potential.contaminant and Reverse "+"
+dat <- Mayo_Proteomics_TC_proteinoutput %>%
+  filter(Potential.contaminant != "+") %>%
+  filter(Reverse != "+") 
+```
+
+Now ours data has dimensions: `r dim(dat) `.
+
+
+<a id="org3e56210"></a>
+
+### Set row names to Protein.IDs
+
+```{r   }
+rownames(dat) <- dat$Protein.IDs 
+```
+
+
+<a id="orgd119606"></a>
+
+### Select LFQ + mgis columns only
+
+```{r   }
+## Select LFQ + egis columns only
+dat.m <- dat %>%
+  dplyr::select(starts_with("LFQ")) %>%
+  dplyr::select(!contains("egis"))
+
+dim(dat.m) 
+```
+
+There are no missing values in our dataset but plenty of zeroes.
+
+There are `r length(dat[dat==0]) ` zeroes.
+
+Traits file: 
+
+-   lines 1:200 &#x2013; samples
+-   lines 201:215 &#x2013; egis samples
+-   lines 216:230 &#x2013; mgis samples
+
+```{r   }
+traits <- Mayo_Proteomics_TC_traits[1:4] 
+```
+
+Rownames to satisfy TAMPOR&rsquo;s conventions
+
+```{r   }
+rownames(traits) <- traits$Samples_Simple %>%
+  gsub("_", "\\.", .)
+
+traits.e <- traits[1:215, ] # egis
+traits.m <- traits[c(1:200, 216:230), ] # mgis 
+```
+
+
+<a id="orge993ded"></a>
+
+#### mgis data
+
+Renaming columns to match the traits
+
+```{r   }
+dat.mt <- dat.m
+
+## Renaming scheme:
+## egis samples: "LFQ.intensity.mayo_b5_egis_24" -> "b5.24"
+## non-egis:     "LFQ.intensity.mayo_b5_197_41" -> "b5.197"
+colnames(dat.mt) <- dat.m %>%
+  names %>%
+  gsub("LFQ.intensity.mayo_", "", .) %>%
+  gsub("mgis_", "", .) %>%
+  gsub("([0-9]{3})_[0-9]{2}$", "\\1", .) %>% # to strip 2 last digits from non egis samples only
+  gsub("_", "\\.", .) 
+```
+
+To make identical column and row names
+
+```{r   }
+dat.mt <- dat.mt[, rownames(traits.m)] 
+```
+
+
+<a id="org010a0ab"></a>
+
+## TAMPOR
+
+Cleanup
+
+```{r   }
+## see: https://github.com/edammer/TAMPOR/issues/2
+dat.mt[dat.mt<=0]<- NA 
+```
+
+
+<a id="org058ab66"></a>
+
+### mgis useAllNonGIS=TRUE
+
+```{r   }
+## ## ## Samples designated as GIS were removed before visualization of variance and MDS
+## TAMPORlist.MGIS.all.true <- TAMPOR(dat.mt, traits.m,
+##                                  noGIS=FALSE,
+##                                  useAllNonGIS=TRUE, # This assumes
+##                                                     # batches are
+##                                                     # generally
+##                                                     # trait-balanced
+##                                                     # and randomized,
+##                                                     # but GIS and
+##                                                     # non-GIS samples
+##                                                     # can be grossly
+##                                                     # different.
+##                                  batchPrefixInSampleNames=TRUE,
+##                                  GISchannels=c("01","23", "44", "45"),
+##                                  samplesToIgnore = NULL,
+##                                  removeGISafter = TRUE,
+##                                  parallelThreads=2,
+##                                  outputSuffix="MGIS")
+
+## saveRDS(TAMPORlist.MGIS.all.true, "./results_prot/TAMPORlist.MGIS.all.true.rds")
+
+
+TAMPORlist.MGIS.all.true <- readRDS("./results_prot/TAMPORlist.MGIS.all.true.rds")
+
+
+## plotMDS(TAMPORlist.GIS$cleanRelAbun %>% log2, col = labels2colors(colnames(TAMPORlist.GIS$cleanRelAbun)))
+
+cra <- TAMPORlist.MGIS.all.true$cleanRelAbun
+
+cra.log <- log2(cra)
+ 
+```
+
+
+<a id="orgf56d0b4"></a>
+
+### PCA of conditions
+
+```{r   }
+conditions.col <- traits$Diagnosis[1:200] %>%
+  sub("Control", "green", .) %>%
+  sub("AD", "red", .) %>%
+  sub("PSP", "blue", .)
+
+traw.log <- log2(dat.mt[1:200])
+colnames(traw.log) <- traits[1:200,4] %>% make.unique
+
+tcra.log <- cra.log
+colnames(tcra.log) <- traits[1:200,4] %>% make.unique
+
+require(limma)
+
+## opar <- par(no.readonly=TRUE)
+png("./figs_prot/mds_tampor_conditions2.png", height = 2000, width = 6000, units = "px")
+## tiff("./figs_prot/mds_tampor_conditions2.tiff", height = 2000, width = 6000, units = "px")
+par(mfrow = c(1, 2), cex = 5)
+
+plotMDS(traw.log, col = conditions.col)
+title("log2 (raw)")
+
+plotMDS(tcra.log, col = conditions.col)
+title("After TAMPOR (mgis)")
+
+dev.off()
+## par(opar)
+## dev.off()
+
+rm(traw.log, tcra.log)
+ 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="Number of samples: AD = 84, PSP = 85, Control = 31" }
+include_graphics("./figs_prot/mds_tampor_conditions2.png") 
+```
+
+
+<a id="orge7ed424"></a>
+
+## FC and adjusted p-values cutoffs
+
+```{r   }
+pv_cut <- 5e-2
+fc_cut <- 0.3 
+```
+
+
+<a id="org04b46dd"></a>
+
+## DE genes
+
+I used this source making the necessary additions and changes:
+[Data Science Workshop British Society for Proteomic Research Meeting
+2018](https://ab604.github.io/docs/bspr_workshop_2018/index.html).
+
+
+<a id="org640a29b"></a>
+
+### Impute missing values
+
+Impute the data by replacing the missing values with the median
+observation for each protein under each condition.
+
+```{r   }
+traits <- Mayo_Proteomics_TC_traits %>%
+  filter(Diagnosis != "EmoryGlobalInternalStandard" &
+           Diagnosis != "MayoGlobalInternalStandard") %>%
+  dplyr::select(1:4)
+
+
+control_cols <- traits %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "Control") %>%
+  .$n
+
+ad_cols <- traits %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "AD") %>%
+  .$n
+
+psp_cols <- traits %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "PSP") %>%
+  .$n
+
+## mean normalisation
+## replace_with_mean <- function(x) replace(x, x==0, mean(x))
+## median normalisation
+replace_with_median <- function(x) replace(x, is.na(x), median(x, na.rm = TRUE))
+
+##
+crad <- as.data.frame(cra)
+## crad <- as.data.frame(cra[-c(23, 53, 84)])
+
+control <- crad %>%
+  dplyr::select(all_of(control_cols)) %>%
+  apply(., 1, replace_with_median) %>%
+  t %>%
+  data.frame
+
+ad <- crad %>%
+  dplyr::select(all_of(ad_cols)) %>%
+  apply(., 1, replace_with_median) %>%
+  t %>%
+  data.frame
+
+psp <- crad %>%
+  dplyr::select(all_of(psp_cols)) %>%
+  apply(., 1, replace_with_median) %>%
+  t %>%
+  data.frame
+
+data_imp <- cbind.data.frame(control, ad, psp) 
+```
+
+
+<a id="orgcc99a07"></a>
+
+### Quantile normalization
+
+```{r   }
+# Quantile normalisation : the aim is to give different distributions the
+# same statistical properties
+quantile_normalisation <- function(df){
+
+  # Find rank of values in each column
+  df_rank <- map_df(df,rank,ties.method="average")
+  # Sort observations in each column from lowest to highest
+  df_sorted <- map_df(df,sort)
+  # Find row mean on sorted columns
+  df_mean <- rowMeans(df_sorted)
+
+  # Function for substiting mean values according to rank
+  index_to_mean <- function(my_index, my_mean){
+    return(my_mean[my_index])
+  }
+
+  # Replace value in each column with mean according to rank
+  df_final <- map_df(df_rank,index_to_mean, my_mean=df_mean)
+
+  return(df_final)
+} 
+```
+
+```{r   }
+data_norm <- data_imp %>%
+  quantile_normalisation() 
+```
+
+```{r   }
+data_imp %>% ggplot() +
+  geom_density(aes(b1.001 %>% log2), col = "red") +
+  geom_density(aes(b2.002 %>% log2), col = "green") +
+  geom_density(aes(b3.011 %>% log2), col = "blue") +
+  geom_density(aes(b4.005 %>% log2), col = "magenta") +
+  geom_density(aes(b5.175 %>% log2)) +
+  ggtitle("Dstribution before normalization (5 samples from different batches)") +
+  xlab("log2 Intensity") +
+  ylab("Density")
+
+data_norm %>% ggplot() +
+  geom_density(aes(b1.001 %>% log2), col = "red", lwd=2.5) +
+  geom_density(aes(b2.002 %>% log2), col = "green", lwd=2) +
+  geom_density(aes(b3.011 %>% log2), col = "blue", lwd = 1.5) +
+  geom_density(aes(b4.005 %>% log2), col = "magenta", lwd = 1) +
+  geom_density(aes(b5.175 %>% log2), lwd=0.5) +
+  ggtitle("Dstribution after normalization (The same 5 samples)") +
+  xlab("log2 Intensity") +
+  ylab("Density") 
+```
+
+
+<a id="org6a7ce93"></a>
+
+### cra rearranged
+
+```{r   }
+traits <- Mayo_Proteomics_TC_traits %>%
+  filter(Diagnosis != "EmoryGlobalInternalStandard" &
+           Diagnosis != "MayoGlobalInternalStandard") %>%
+  dplyr::select(1:4)
+
+
+control_cols <- traits %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "Control") %>%
+  .$n
+
+ad_cols <- traits %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "AD") %>%
+  .$n
+
+psp_cols <- traits %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "PSP") %>%
+  .$n
+
+## rearrange columns in cra (optional)
+cra <- cra %>%
+  data.frame %>%
+  dplyr::select(all_of(c(control_cols, ad_cols, psp_cols))) 
+```
+
+
+<a id="org7d49886"></a>
+
+### Design matrix and linear model fitting
+
+
+<a id="org7c67b05"></a>
+
+#### Create the design matrix
+
+```{r   }
+diagnosis <- c(rep("Control", length(control_cols)), rep("AD", length(ad_cols)), rep("PSP", length(psp_cols)))
+design <- model.matrix( ~ diagnosis + 0) 
+```
+
+
+<a id="orgd18fae4"></a>
+
+#### Fit linear model
+
+```{r   }
+data_norm <- data.frame(data_norm)
+rownames(data_norm) <- rownames(cra) %>% sub("^.+\\|.+\\|(.+)_HUMAN.?", "\\1", .) %>% make.unique
+
+require(limma)
+fit <- lmFit(data_norm %>% log2, design) 
+```
+
+
+<a id="org725719e"></a>
+
+### Significantly DE proteins: AD vs Control
+
+Build a contrast AD vs Control
+
+```{r   }
+AvsC <- makeContrasts(diagnosisAD - diagnosisControl, levels=design) 
+```
+
+```{r   }
+fit_AvsC <-contrasts.fit(fit, AvsC)
+
+bf_AvsC <- eBayes(fit_AvsC)
+
+bf_AvsC %>% decideTests %>% summary 
+```
+
+Thus, 405 proteins are significantly downregulated and 321 upregulated
+in AD versus Control samples (log2 FC cutoff is not applied here).
+
+```{r   }
+AvsC_top <- topTable(bf_AvsC, adjust="BH", sort.by = "logFC", number = 1000, p.value = pv_cut, lfc = fc_cut)
+
+write.csv(AvsC_top, "./results_prot/prot_ad_vs_control.csv")
+
+knitr::kable(AvsC_top,
+             caption = "Top DE proteins: AD vs Control")
+
+ 
+```
+
+
+<a id="org55091e1"></a>
+
+### Significantly DE proteins: PSP vs Control
+
+Build a contrast PSP vs Control
+
+```{r   }
+PvsC <- makeContrasts(diagnosisPSP - diagnosisControl, levels=design) 
+```
+
+```{r   }
+fit_PvsC <-contrasts.fit(fit, PvsC)
+
+bf_PvsC <- eBayes(fit_PvsC)
+
+bf_PvsC %>% decideTests %>% summary 
+```
+
+Thus, 346  proteins are significantly downregulated and 521 upregulated
+in PSP versus Control samples (log2 FC cutoff is not applied here).
+
+```{r   }
+PvsC_top <- topTable(bf_PvsC, adjust="BH", sort.by = "logFC", number = 1000, p.value = pv_cut, lfc = fc_cut)
+
+write.csv(PvsC_top, "./results_prot/prot_psp_vs_control.csv")
+
+knitr::kable(PvsC_top,
+             caption = "Top DE proteins: PSP vs Control") 
+```
+
+
+<a id="org5af8c29"></a>
+
+### Significantly DE proteins: AD vs PSP
+
+Build a contrast AD vs PSP
+
+```{r   }
+AvsP <- makeContrasts(diagnosisAD - diagnosisPSP, levels=design) 
+```
+
+```{r   }
+fit_AvsP <-contrasts.fit(fit, AvsP)
+
+bf_AvsP <- eBayes(fit_AvsP)
+
+bf_AvsP %>% decideTests %>% summary 
+```
+
+Thus, 1240  proteins are significantly downregulated and 823 upregulated
+in PSP versus Control samples (log2 FC cutoff is not applied here).
+
+```{r   }
+AvsP_top <- topTable(bf_AvsP, adjust="BH", sort.by = "logFC", number = 1000, p.value = pv_cut, lfc = fc_cut)
+
+write.csv(AvsP_top, "./results_prot/prot_ad_vs_psp.csv")
+
+knitr::kable(AvsP_top,
+             caption = "Top DE proteins: AD vs PSP") 
+```
+
+
+<a id="org8ce4fbe"></a>
+
+### Table with log-FC and Adjusted p-values
+
+```{r   }
+dat_fc_pv <- bind_cols(ProteinIDs = rownames(data_imp),
+                       fc_control_ad = topTable(bf_AvsC, sort = "none", n = Inf)$logFC,
+                       fc_control_psp = topTable(bf_PvsC, sort = "none", n = Inf)$logFC,
+                       fc_ad_psp = topTable(bf_AvsP, sort = "none", n = Inf)$logFC,
+                       ad_control_pv = topTable(bf_AvsC, sort = "none", n = Inf)$adj.P.Val,
+                       psp_control_pv = topTable(bf_PvsC, sort = "none", n = Inf)$adj.P.Val,
+                       ad_psp_pv = topTable(bf_AvsP, sort = "none", n = Inf)$adj.P.Val,
+                       PIDshort = rownames(data_norm)) 
+```
+
+
+<a id="orgf7187dd"></a>
+
+### List of up and downregulated DE proteins
+
+The results are collected in an Excel file, the name of which includes
+the criteria (adjusted p-values ​​and log2FC).  If an Excel file with the same
+name and page exists, then the data is not overwritten and an error
+message appears. Therefore, before running the code again with the
+same parameters (the same adjusted p-values+FC), you need to delete this file.
+
+```{r  fig.asp = 1 }
+
+AD_C_UP <- dat_fc_pv %>%
+  filter(ad_control_pv <= pv_cut) %>%
+  filter(fc_control_ad >= fc_cut) %>%
+  arrange(-abs(fc_control_ad)) %>%
+  dplyr::select(PIDshort, ad_control_pv, fc_control_ad)
+
+AD_C_DOWN <- dat_fc_pv %>%
+  filter(ad_control_pv <= pv_cut) %>%
+  filter(fc_control_ad <= -fc_cut) %>%
+  arrange(-abs(fc_control_ad)) %>%
+  dplyr::select(PIDshort, ad_control_pv, fc_control_ad)
+
+PSP_C_UP <- dat_fc_pv %>%
+  filter(psp_control_pv <= pv_cut) %>%
+  filter(fc_control_psp >= fc_cut) %>%
+  arrange(-abs(fc_control_psp)) %>%
+  dplyr::select(PIDshort, psp_control_pv, fc_control_psp)
+
+PSP_C_DOWN <- dat_fc_pv %>%
+  filter(psp_control_pv <= pv_cut) %>%
+  filter(fc_control_psp <= -fc_cut) %>%
+  arrange(-abs(fc_control_psp)) %>%
+  dplyr::select(PIDshort, psp_control_pv, fc_control_psp)
+
+AD_PSP_UP <- dat_fc_pv %>%
+  filter(ad_psp_pv <= pv_cut) %>%
+  filter(fc_ad_psp >= fc_cut) %>%
+  arrange(-abs(fc_ad_psp)) %>%
+  dplyr::select(PIDshort, ad_psp_pv, fc_ad_psp)
+
+AD_PSP_DOWN <- dat_fc_pv %>%
+  filter(ad_psp_pv <= pv_cut) %>%
+  filter(fc_ad_psp <= -fc_cut) %>%
+  arrange(-abs(fc_ad_psp)) %>%
+  dplyr::select(PIDshort, ad_psp_pv, fc_ad_psp)
+
+require(xlsx)
+
+write.xlsx(AD_C_UP,
+           file = paste0("./results_prot/DE_genes_p-value_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           append = TRUE,
+           sheetName = "AD vs Control UP")
+
+write.xlsx(AD_C_DOWN,
+           file = paste0("./results_prot/DE_genes_p-value_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           append = TRUE,
+           sheetName = "AD vs Control DOWN")
+
+write.xlsx(PSP_C_UP,
+           file = paste0("./results_prot/DE_genes_p-value_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           append = TRUE,
+           sheetName = "PSP vs Control UP")
+
+write.xlsx(PSP_C_DOWN,
+           file = paste0("./results_prot/DE_genes_p-value_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           append = TRUE,
+           sheetName = "PSP vs Control DOWN")
+
+write.xlsx(AD_PSP_UP,
+           file = paste0("./results_prot/DE_genes_p-value_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           append = TRUE,
+           sheetName = "AD vs PSP UP")
+
+write.xlsx(AD_PSP_DOWN,
+           file = paste0("./results_prot/DE_genes_p-value_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           append = TRUE,
+           sheetName = "AD vs PSP DOWN") 
+```
+
+
+<a id="orgb863bec"></a>
+
+### Clustering and heatmaps
+
+
+<a id="org4684532"></a>
+
+#### Clustering AD-Control
+
+Prepare an object for clustering
+
+```{r   }
+data_log2 <- data_norm %>% log2
+
+d <- data_log2
+
+## Set clear column names
+colnames(d) <- c(rep("Control", 31), rep("AD", 84), rep("PSP", 85)) %>% make.unique
+
+## add columns with short protein IDs, log2 folds,  adjusted p-values
+data_all <- data.frame(d, dat_fc_pv)
+
+rm(d) 
+```
+
+Filter the data for AD vs Control according to a threshold of
+significance: adjusted p-values `r pv_cut ` and
+log2 fold change to `r fc_cut `.
+
+```{r   }
+dat_filt_ad <- data_all %>% filter(abs(fc_control_ad) >= fc_cut &
+                                     ad_control_pv <= pv_cut) %>%
+  arrange(-abs(fc_control_ad)) %>%
+  ## slice_head(n=25) %>%
+  dplyr::select(PIDshort, (starts_with("AD.") | starts_with("Control")) ) 
+```
+
+Transform to matrix
+
+```{r   }
+## data.matrix() leaves numeric data as is.
+ad_matrix <- data.matrix(dat_filt_ad)
+
+rownames(ad_matrix) <- dat_filt_ad$PIDshort
+
+ad_matrix <- ad_matrix[,-1] 
+```
+
+```{r   }
+ad_scaled <- ad_matrix %>% t %>% scale %>% t 
+```
+
+Euclidean distance between experiments: AD & Control
+
+```{r   }
+ad_dist <- ad_scaled %>% t %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Euclidean distance between proteins: AD & Control
+
+```{r   }
+ad_dist_prot <- ad_scaled %>% 
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Hierarchical Ward&rsquo;s clustering 
+
+```{r  fig.asp = 1.5 }
+ad_hclust <- hclust(ad_dist, method = "ward.D2", members = NULL)
+ad_hclust_prot <- hclust(ad_dist_prot, method = "ward.D2", members = NULL)
+
+
+png("./figs_prot/hclust_ad.png", width = 2500, height = 3000, res = 300)
+par(mfrow = c(2,1))
+ad_hclust %>% plot(cex = 0.4, main = "Conditions (Number of samples: AD = 84, Control = 31)")
+ad_hclust_prot %>% plot(cex = 0.6, main = "Proteins (Number of samples: AD = 84, Control = 31)")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/hclust_ad.png") 
+```
+
+
+<a id="org5aa6da5"></a>
+
+#### Heatmap AD-Control
+
+```{r  fig.asp = 1 }
+# Set colours for heatmap, 25 increments
+my_palette <- colorRampPalette(c("blue","white","red"))(n = 25)
+
+png("./figs_prot/heatmap_ad.png", width = 2000, height = 2000, res = 300)
+# Plot heatmap with heatmap.2
+par(cex.main=0.75) # Shrink title fonts on plot
+ad_scaled %>%
+  # Plot heatmap
+  gplots::heatmap.2(.,                     # Tidy, normalised data
+                    Colv=as.dendrogram(ad_hclust),     # Experiments clusters in cols
+                    Rowv=as.dendrogram(ad_hclust_prot),     # Protein clusters in rows
+                    revC=TRUE,                  # Flip plot to match pheatmap
+                    density.info="histogram",   # Plot histogram of data and colour key
+                    trace="none",               # Turn of trace lines from heat map
+                    col = my_palette,           # Use my colour scheme
+                    cexRow=0.3,cexCol=0.2,      # Amend row and column label fonts
+                    xlab = paste0("Number of samples: AD = ", length(ad_cols), ", Control = ", length(control_cols))
+                    )
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/heatmap_ad.png") 
+```
+
+
+<a id="org63869e7"></a>
+
+#### Clustering PSP-Control
+
+Filter the data for PSP vs Control according to a threshold of
+significance: adjusted p-values `r pv_cut ` and
+log2 fold change to `r fc_cut `.
+
+```{r   }
+dat_filt_psp <- data_all %>% filter(abs(fc_control_psp) >= fc_cut &
+                                     psp_control_pv <= pv_cut) %>%
+  arrange(-abs(fc_control_psp)) %>%
+  ## slice_head(n=25) %>%
+  dplyr::select(PIDshort, (starts_with("PSP.") | starts_with("Control")) ) 
+```
+
+Transform to matrix
+
+```{r   }
+## data.matrix() leaves numeric data as is.
+psp_matrix <- data.matrix(dat_filt_psp)
+
+rownames(psp_matrix) <- dat_filt_psp$PIDshort
+
+psp_matrix <- psp_matrix[,-1] 
+```
+
+```{r   }
+psp_scaled <- psp_matrix %>% t %>% scale %>% t 
+```
+
+Euclidean distance between experiments: AD & Control
+
+```{r   }
+psp_dist <- psp_scaled %>% t %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Euclidean distance between proteins: AD & Control
+
+```{r   }
+psp_dist_prot <- psp_scaled %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Hierarchical Ward&rsquo;s clustering 
+
+```{r  fig.asp = 1.5 }
+psp_hclust <- hclust(psp_dist, method = "ward.D2", members = NULL)
+psp_hclust_prot <- hclust(psp_dist_prot, method = "ward.D2", members = NULL)
+
+
+png("./figs_prot/hclust_psp.png", width = 2500, height = 3000, res = 300)
+par(mfrow = c(2,1))
+psp_hclust %>% plot(cex = 0.4, main = "Conditions (Number of samples: PSP = 85, Control = 31)")
+psp_hclust_prot %>% plot(cex = 0.6, main = "Proteins (Number of samples: PSP = 85, Control = 31)")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/hclust_psp.png") 
+```
+
+
+<a id="org49be284"></a>
+
+#### Heatmap PSP-Control
+
+```{r  fig.asp = 1 }
+# Set colours for heatmap, 25 increments
+my_palette <- colorRampPalette(c("blue","white","red"))(n = 25)
+
+# Plot heatmap with heatmap.2
+png("./figs_prot/heatmap_psp.png", width = 2000, height = 2000, res = 300)
+par(cex.main=0.75) # Shrink title fonts on plot
+psp_scaled %>%
+  # Plot heatmap
+  gplots::heatmap.2(.,                     # Tidy, normalised data
+          Colv=as.dendrogram(psp_hclust),     # Experiments clusters in cols
+          Rowv=as.dendrogram(psp_hclust_prot),     # Protein clusters in rows
+          revC=TRUE,                  # Flip plot to match pheatmap
+          density.info="histogram",   # Plot histogram of data and colour key
+          trace="none",               # Turn of trace lines from heat map
+          col = my_palette,           # Use my colour scheme
+          cexRow=0.3, cexCol=0.3,     # Amend row and column label fonts
+          xlab = paste0("Number of samples: PSP = ", length(psp_cols), ", Control = ", length(control_cols))
+          )
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/heatmap_psp.png") 
+```
+
+
+<a id="orgd150783"></a>
+
+#### Clustering AD-PSP
+
+Filter the data for AD vs PSP according to a threshold of
+significance: adjusted p-values `r pv_cut ` and
+log2 fold change to `r fc_cut `.
+
+```{r   }
+dat_filt_adpsp <- data_all %>% filter(abs(fc_ad_psp) >= fc_cut &
+                                     ad_psp_pv <= pv_cut) %>%
+  arrange(-abs(fc_ad_psp)) %>%
+  ## slice_head(n=25) %>%
+  dplyr::select(PIDshort, (starts_with("AD.") | starts_with("PSP.")) ) 
+```
+
+Transform to matrix
+
+```{r   }
+## data.matrix() leaves numeric data as is.
+adpsp_matrix <- data.matrix(dat_filt_adpsp)
+
+rownames(adpsp_matrix) <- dat_filt_adpsp$PIDshort
+
+adpsp_matrix <- adpsp_matrix[,-1] 
+```
+
+```{r   }
+adpsp_scaled <- adpsp_matrix %>% t %>% scale %>% t 
+```
+
+Euclidean distance between experiments: AD & Control
+
+```{r   }
+adpsp_dist <- adpsp_scaled %>% t %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Euclidean distance between proteins: AD & Control
+
+```{r   }
+adpsp_dist_prot <- adpsp_scaled %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Hierarchical Ward&rsquo;s clustering 
+
+```{r  fig.asp = 1.5 }
+adpsp_hclust <- hclust(adpsp_dist, method = "ward.D2", members = NULL)
+adpsp_hclust_prot <- hclust(adpsp_dist_prot, method = "ward.D2", members = NULL)
+
+
+png("./figs_prot/hclust_ad_psp.png", width = 2500, height = 3000, res = 300)
+par(mfrow = c(2,1))
+adpsp_hclust %>% plot(cex = 0.2, main = "Conditions (Number of samples: AD = 84, PSP = 85)")
+adpsp_hclust_prot %>% plot(cex = 0.2, main = "Proteins (Number of samples: AD = 84, PSP = 85)")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/hclust_ad_psp.png") 
+```
+
+
+<a id="org4a16dea"></a>
+
+#### Heatmap AD-PSP
+
+```{r  fig.asp = 1 }
+# Set colours for heatmap, 25 increments
+my_palette <- colorRampPalette(c("blue","white","red"))(n = 25)
+
+# Plot heatmap with heatmap.2
+png("./figs_prot/heatmap_ad_psp.png", width = 2000, height = 2000, res = 300)
+par(cex.main=0.75) # Shrink title fonts on plot
+adpsp_scaled %>%
+  # Plot heatmap
+  gplots::heatmap.2(.,                     # Tidy, normalised data
+          Colv=as.dendrogram(adpsp_hclust),     # Experiments clusters in cols
+          Rowv=as.dendrogram(adpsp_hclust_prot),     # Protein clusters in rows
+          revC=TRUE,                  # Flip plot to match pheatmap
+          density.info="histogram",   # Plot histogram of data and colour key
+          trace="none",               # Turn of trace lines from heat map
+          col = my_palette,           # Use my colour scheme
+          cexRow=0.3, cexCol=0.3,     # Amend row and column label fonts
+          xlab = paste0("Number of samples: AD = ", length(ad_cols), ", PSP = ", length(psp_cols))
+          )
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/heatmap_ad_psp.png") 
+```
+
+
+<a id="org6f78884"></a>
+
+### Venn diagram for significantly DE proteins (adj. p-values<0.05, FC>0.3)
+
+
+<a id="org27b11b6"></a>
+
+#### All proteins
+
+```{r  fig.asp = 1 }
+venn_list <- list("AD vs Control" =  dat_fc_pv %>%
+                    filter(ad_control_pv <= pv_cut) %>%
+                    ## filter(ad_control_pv <= pv_cut & abs(fc_control_ad) > fc_cut) %>%
+                    pull(PIDshort),
+                  "PSP vs Control" = dat_fc_pv %>%
+                    filter(psp_control_pv <= pv_cut) %>%
+                    ## filter(psp_control_pv <= pv_cut & abs(fc_control_psp) > fc_cut) %>%
+                    pull(PIDshort),
+                  "AD vs PSP" = dat_fc_pv %>%
+                    filter(ad_psp_pv <= pv_cut) %>%
+                    ## filter(ad_psp_pv <= pv_cut & abs(fc_ad_psp) > fc_cut) %>%
+                    pull(PIDshort)
+                  )
+
+# Prevent the output of a log file
+futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
+
+# Create a venn diagram object
+prot_venn <- venn.diagram(venn_list,
+                          NULL,
+                          col = "transparent",
+                          fill = c("cornflowerblue", "green", "yellow"),
+                          alpha = 0.50,
+                          cex = 0.8,
+                          fontfamily = "sans",
+                          fontface = "bold",
+                          cat.col = c("darkblue", "darkgreen", "orange"),
+                          cat.cex = 0.8,
+                          cat.fontfamily = "sans",
+                          margin = 0.2,
+                          main = paste0("Pairwise significantly DE proteins (adj.p<",pv_cut,") identified in the experiment"),
+                          main.pos = c(0.5, 1.05),
+                          main.fontfamily = "sans",
+                          sub = "Number of samples: AD = 84, PSP = 85, Control = 31",
+                          sub.pos = c(0.5, 0.92),
+                          sub.cex = 0.8,
+                          sub.fontfamily = "sans",
+                          print.mode = c("raw","percent"), # Show both numbers and percent
+                          )
+
+# Plot the venn diagram using the gridExtra package
+png("./figs_prot/venn.png", width = 2000, height = 2000, res = 300)
+grid.arrange(gTree(children = prot_venn))
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/venn.png") 
+```
+
+```{r  fig.asp = 1 }
+venn_list2 <- list(
+  "AD-C +" =  dat_fc_pv %>%
+    filter(ad_control_pv <= pv_cut & fc_control_ad >= 0) %>%
+    pull(PIDshort),
+  "AD-C -" =  dat_fc_pv %>%
+    filter(ad_control_pv <= pv_cut & fc_control_ad < 0) %>%
+    pull(PIDshort),
+  "PSP-C +" =  dat_fc_pv %>%
+    filter(psp_control_pv <= pv_cut & fc_control_psp >= 0) %>%
+    pull(PIDshort),
+  "PSP-C -" =  dat_fc_pv %>%
+    filter(psp_control_pv <= pv_cut & fc_control_psp < 0) %>%
+    pull(PIDshort),
+  "AD-PSP +" =  dat_fc_pv %>%
+    filter(ad_psp_pv <= pv_cut & fc_ad_psp >= 0) %>%
+    pull(PIDshort),
+  "AD-PSP -" =  dat_fc_pv %>%
+    filter(ad_psp_pv <= pv_cut & fc_ad_psp < 0) %>%
+    pull(PIDshort)
+) 
+```
+
+
+<a id="orgb84e571"></a>
+
+#### Upregulated proteins
+
+```{r   }
+prot_venn_up <- venn.diagram(venn_list2[c(1,3,5)],NULL,
+                          col = "transparent",
+                          fill = c("cornflowerblue", "green", "yellow"),
+                          alpha = 0.50,
+                          cex = 0.8,
+                          fontfamily = "sans",
+                          fontface = "bold",
+                          cat.col = c("darkblue", "darkgreen", "orange"),
+                          cat.cex = 0.8,
+                          cat.fontfamily = "sans",
+                          margin = 0.2,
+                          main = "Pairwise significantly upregulated proteins (adj.p<0.05) identified in the experiment",
+                          main.fontfamily = "sans",
+                          sub = "Number of samples: AD = 84, PSP = 85, Control = 31",
+                          sub.pos = c(0.5, 0.92),
+                          sub.cex = 0.8,
+                          sub.fontfamily = "sans",
+                          print.mode = c("raw","percent"), # Show both numbers and percent
+                          main.pos = c(0.5, 1.05)
+                          )
+
+# Plot the venn diagram using the gridExtra package
+png("./figs_prot/venn_up.png", width = 2000, height = 2000, res = 300)
+grid.arrange(gTree(children = prot_venn_up))
+dev.off()
+ 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/venn_up.png") 
+```
+
+
+<a id="orgccb053d"></a>
+
+#### Downregulated proteins
+
+```{r   }
+prot_venn_down <- venn.diagram(venn_list2[c(2,4,6)],NULL,
+                          col = "transparent",
+                          fill = c("cornflowerblue", "green", "yellow"),
+                          alpha = 0.50,
+                          cex = 0.8,
+                          fontfamily = "sans",
+                          fontface = "bold",
+                          cat.col = c("darkblue", "darkgreen", "orange"),
+                          cat.cex = 0.8,
+                          cat.fontfamily = "sans",
+                          margin = 0.2,
+                          main = "Pairwise significantly downregulated proteins (adj.p<0.05) identified in the experiment",
+                          main.pos = c(0.5, 1.05),
+                          main.fontfamily = "sans",
+                          sub = "Number of samples: AD = 84, PSP = 85, Control = 31",
+                          sub.pos = c(0.5, 0.92),
+                          sub.cex = 0.8,
+                          sub.fontfamily = "sans",
+                          print.mode = c("raw","percent") # Show both numbers and percent
+                          )
+
+# Plot the venn diagram using the gridExtra package
+png("./figs_prot/venn_down.png", width = 2000, height = 2000, res = 300)
+grid.arrange(gTree(children = prot_venn_down))
+dev.off()
+ 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/venn_down.png") 
+```
+
+
+<a id="org0375e18"></a>
+
+## Enchanced Volcano plots
+
+```{r   }
+
+EnhancedVolcano(dat_fc_pv,
+                x = "fc_control_ad",
+                y = "ad_control_pv",
+                lab = dat_fc_pv$PIDshort,
+                title = 'AD versus Control',
+                subtitle = "Number of samples: AD = 84, PSP = 85, Control = 31",
+                pCutoff = pv_cut,
+                FCcutoff = fc_cut,
+                pointSize = 1.0,
+                labSize = 3.0) +
+  ggplot2::scale_y_continuous(limits = c(0, 7)) +
+  ggplot2::scale_x_continuous(limits = c(-1, 1))
+ggsave("./figs_prot/ad_vs_control_volcano.png")
+
+ad_vs_control_proteins <- dat_fc_pv %>%
+  dplyr::select(PIDshort, fc = fc_control_ad, pv = ad_control_pv) %>%
+  arrange(-abs(fc)) %>%
+  filter(pv <= pv_cut & abs(fc) >= fc_cut)
+
+require(xlsx)
+write.xlsx(ad_vs_control_proteins,
+           file = paste0("./results_prot/significantly_de_proteins_pv_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           sheetName = "AD vs Control", append=TRUE)
+
+EnhancedVolcano(dat_fc_pv,
+                x = "fc_control_psp",
+                y = "psp_control_pv",
+                lab = dat_fc_pv$PIDshort,
+                title = 'PSP versus Control',
+                subtitle = "Number of samples: AD = 84, PSP = 85, Control = 31",
+                pCutoff = pv_cut,
+                FCcutoff = fc_cut,
+                pointSize = 1.0,
+                labSize = 3.0) +
+  ggplot2::scale_y_continuous(limits = c(0, 6)) +
+  ggplot2::scale_x_continuous(limits = c(-1, 1))
+ggsave("./figs_prot/psp_vs_control_volcano.png")
+
+psp_vs_control_proteins <- dat_fc_pv %>%
+  dplyr::select(PIDshort, fc = fc_control_psp, pv = psp_control_pv) %>%
+  arrange(-abs(fc)) %>%
+  filter(pv <= pv_cut & abs(fc) >= fc_cut)
+
+require(xlsx)
+write.xlsx(psp_vs_control_proteins,
+           file = paste0("./results_prot/significantly_de_proteins_pv_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           sheetName = "PSP vs Control", append=TRUE)
+
+EnhancedVolcano(dat_fc_pv,
+                x = "fc_ad_psp",
+                y = "ad_psp_pv",
+                lab = dat_fc_pv$PIDshort,
+                title = 'PSP versus AD',
+                subtitle = "Number of samples: AD = 84, PSP = 85, Control = 31",
+                pCutoff = pv_cut,
+                FCcutoff = fc_cut,
+                pointSize = 1.0,
+                labSize = 3.0) +
+  ggplot2::scale_y_continuous(limits = c(0, 20)) +
+  ggplot2::scale_x_continuous(limits = c(-1, 1))
+ggsave("./figs_prot/psp_vs_ad_volcano.png")
+
+psp_vs_ad_proteins <- dat_fc_pv %>%
+  dplyr::select(PIDshort, fc = fc_ad_psp, pv = ad_psp_pv) %>%
+  arrange(-abs(fc)) %>%
+  filter(pv <= pv_cut & abs(fc) >= fc_cut)
+
+require(xlsx)
+## write.xlsx(psp_vs_ad_proteins, "significantly_de_proteins.xlsx", sheetName = "PSP vs AD", append=TRUE)
+write.xlsx(psp_vs_ad_proteins,
+           file = paste0("./results_prot/significantly_de_proteins_pv_", pv_cut, "_log2FC_", fc_cut, ".xlsx"),
+           sheetName = "PSP vs AD", append=TRUE) 
+```
+
+
+<a id="org1890d4b"></a>
+
+## Boxplots
+
+
+<a id="org2e7947a"></a>
+
+### AD vs Control
+
+```{r   }
+## On the example of AD vs Control.
+
+## At first i took the significantly DE genes for e.g. AD vs Control.
+## Data with FC and p-values ​​has already been collected in dat_fc_pv. I
+## had to select data from this table only for AD vs Control, since it
+## was necessary to filter out significant genes for this particular
+## variant.
+
+ad_vs_control_names <- dat_fc_pv %>%
+  ## Filtered out relevant proteins. In this case, with p-vales <= pv_cut and abs(log2FC) >= fc_cut
+  filter(abs(fc_control_ad) >= fc_cut & ad_control_pv <= pv_cut) %>%
+  ## Sorting the table
+  arrange(-abs(fc_control_ad)) %>%
+  slice_head(n=25) %>%
+  ## The full form of protein names is needed to select them from the
+  ## cra.log table.  The short form of protein names is needed for the
+  ## graph.
+  dplyr::select(ProteinIDs, PIDshort)
+
+## Then, I filtered the required proteins from the cra.log dataframe,
+## transposed the resulting table and changed its class from matrix to
+## dataframe.
+avc <- cra.log[ad_vs_control_names$ProteinIDs, ] %>% t %>% data.frame
+
+## Renamed columns by protein names.
+colnames(avc) <- ad_vs_control_names$PIDshort
+
+## Created a "condition" column filled with NAs. It is needed to build boxplots.
+avc$condition <- NA
+
+## In the "condition" column, I replaced NAs with the variants names: Control, AD, PSP.
+avc[control_cols, ]$condition <- "Control"
+avc[ad_cols, ]$condition <- "AD"
+avc[psp_cols, ]$condition <- "PSP"
+ 
+```
+
+```{r  fig.show='hide' }
+avc %>% filter(condition != "PSP") %>%
+  ## For ggplot, you need to convert the data from wide format to long format.
+  pivot_longer(-condition, names_to = "protein", values_to = "level") %>%
+  ## gglot uses the "condition" column to group boxplots: fill=condition in aes().
+  ggplot(aes(protein, level, fill=condition)) +
+  geom_boxplot(outlier.size = 0.5) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 3)) +
+  xlab("") +
+  ylab("log2 expression level") +
+  ggtitle("AD vs Control top 25 significant proteins (Number of samples: AD = 84, Control = 31)") +
+  theme_light() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+ggsave("./figs_prot/boxplot_ad_vs_control.png", dpi = 300, scale = 2, width = 6, height = 3, units = "in") 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/boxplot_ad_vs_control.png") 
+```
+
+
+<a id="org7e5dc89"></a>
+
+### PSP vs Control
+
+```{r  fig.show='hide' }
+psp_vs_control_names <- dat_fc_pv %>%
+  filter(psp_control_pv <= pv_cut & abs(fc_control_psp) >= fc_cut) %>%
+  arrange(-abs(fc_control_psp)) %>%
+  slice_head(n=25) %>%
+  dplyr::select(ProteinIDs, PIDshort)
+
+pvc <- cra.log[psp_vs_control_names$ProteinIDs, ] %>% t %>% data.frame
+
+colnames(pvc) <- psp_vs_control_names$PIDshort
+
+pvc$condition <- NA
+
+pvc[control_cols, ]$condition <- "Control"
+pvc[ad_cols, ]$condition <- "AD"
+pvc[psp_cols, ]$condition <- "PSP"
+
+pvc %>% filter(condition != "AD") %>%
+  pivot_longer(-condition, names_to = "protein", values_to = "level") %>%
+  mutate(conditions = factor(condition, levels = c("PSP", "Control"))) %>%
+  ggplot(aes(protein, level, fill=conditions)) +
+  geom_boxplot(outlier.size = 0.5) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 3)) +
+  xlab("") +
+  ylab("log2 expression level") +
+  ggtitle("PSP vs Control top 25 significant proteins (Number of samples: PSP = 85, Control = 31)") +
+  theme_light() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+ggsave("./figs_prot/boxplot_psp_vs_control.png", dpi = 300, scale = 2, width = 6, height = 3, units = "in") 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/boxplot_psp_vs_control.png") 
+```
+
+
+<a id="org33e3882"></a>
+
+### AD vs PSP
+
+```{r  fig.show='hide' }
+psp_vs_ad_names <- dat_fc_pv %>%
+  filter(abs(fc_ad_psp) >= fc_cut & ad_psp_pv <= pv_cut ) %>%
+  arrange(-abs(fc_ad_psp)) %>%
+  slice_head(n=25) %>%
+  dplyr::select(ProteinIDs, PIDshort)
+
+
+pva <- cra.log[psp_vs_ad_names$ProteinIDs, ]  %>% t %>% data.frame
+
+## %>% t %>% data.frame
+
+colnames(pva) <- psp_vs_ad_names$PIDshort
+
+pva$condition <- NA
+
+pva[control_cols, ]$condition <- "Control"
+pva[ad_cols, ]$condition <- "AD"
+pva[psp_cols, ]$condition <- "PSP"
+
+
+pva %>% filter(condition != "Control") %>%
+  pivot_longer(-condition, names_to = "protein", values_to = "level") %>%
+  ggplot(aes(protein, level, fill=condition)) +
+  geom_boxplot(outlier.size = 0.5) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 3)) +
+  xlab("") +
+  ylab("log2 expression level") +
+  ggtitle("PSP vs AD top 25 significant proteins (Number of samples: AD = 84, PSP = 85)") +
+  theme_light() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+ggsave("./figs_prot/boxplot_ad_vs_psp.png", dpi = 300, scale = 2, width = 6, height = 3, units = "in") 
+```
+
+d 167 rows containing non-finite values (stat\_boxplot).
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_prot/boxplot_ad_vs_psp.png") 
+```
+
+
+<a id="org13baf61"></a>
+
+# Significantly DE transcripts
+
+
+<a id="org8077e23"></a>
+
+## Data
+
+```{r  cache=TRUE }
+transcripts <- read.delim("./data_transcr/MayoRNAseq_RNAseq_TCX_transcriptCounts.tsv",
+                          stringsAsFactors = FALSE) %>%
+  `rownames<-`(.$ensembl_id)
+
+ensembl_id <- data.frame(transcripts[1])
+
+transcripts <- transcripts[-1] 
+```
+
+We form a table with the names of gene samples, RNA and diagnosis.
+
+```{r  cache=TRUE }
+## transcripts_norm %>% names %>% sub("^.+_([0-9]+)_.+", "\\1", .)
+names(transcripts) <- transcripts %>%
+  names %>%
+  sub("^X([0-9]+_.+)", "\\1", .)
+
+id_keys_raw <- read.csv("./data_transcr/Mayo_Proteomics_ID_key.csv",
+                        strip.white = TRUE,
+                        header = TRUE,
+                        stringsAsFactors = FALSE) %>%
+  na.omit %>%
+  dplyr::select(1:2)
+
+id_keys <- read.csv("./data_transcr/Mayo_Proteomics_TC_traits.csv",
+                    strip.white = TRUE,
+                    header = TRUE,
+                    stringsAsFactors = FALSE) %>%
+  slice_head(n=200) %>%
+  dplyr::select(c(1,4)) %>%
+  cbind.data.frame(., id_keys_raw) %>%
+  dplyr::select(c(1,4,2)) %>%
+  filter(Samples_Simple != "b1_091_20b")
+
+rm(id_keys_raw) 
+```
+
+```{r   }
+samples_in_common <- intersect(names(transcripts),
+                               id_keys$RNA_SampleID) 
+```
+
+We leave only lines with samples in common.
+
+```{r   }
+id_keys <- id_keys %>%
+  filter(RNA_SampleID %in% samples_in_common) 
+```
+
+Selecting only relevant columns from the data.
+
+```{r  cache=TRUE }
+transcripts <- transcripts %>%
+  dplyr::select(all_of(id_keys$RNA_SampleID)) 
+```
+
+We get and save the column numbers for each of the conditions (AD,
+PSP, Control).
+
+```{r   }
+control_cols <- id_keys %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "Control") %>%
+  .$n
+
+ad_cols <- id_keys %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "AD") %>%
+  .$n
+
+psp_cols <- id_keys %>%
+  mutate(n = rownames(.) %>% as.numeric) %>%
+  filter(Diagnosis == "PSP") %>%
+  .$n 
+```
+
+
+<a id="org54267f5"></a>
+
+## Filtering to remove lowly expressed genes
+
+Genes with very low counts across all libraries provide little evidence
+for differential expression.
+
+To filter out lowly expressed genes, we filtering on a minimum counts
+per million threshold present in at least 31 samples. 31 represents
+the smallest sample size (in Control group) for each group in our
+experiment. We choose to retain genes if they are expressed at a
+counts-per-million (CPM) above 1 in at least 31 samples.
+
+We&rsquo;ll use the `cpm` function from the *edgeR* library to generate the CPM
+values. By converting to CPMs we are normalising for the different
+sequencing depths for each sample.
+
+```{r  cache=TRUE }
+# Obtain CPMs
+transcripts_cpm <- cpm(transcripts)
+# Have a look at the output
+head(transcripts_cpm)[,1:5] 
+```
+
+A threshold of 1 CPM in at least *minimum* group sample size is a good
+rule of thumb.
+
+```{r  cache=TRUE }
+# Which values in myCPM are greater than 0.5?
+thresh <- transcripts_cpm > 1 
+# This produces a logical matrix with TRUEs and FALSEs
+head(thresh)[,1:5] 
+```
+
+```{r  cache=TRUE }
+# Summary of how many TRUEs there are in each row
+# There are 11433 genes that have TRUEs in all 12 samples.
+table(rowSums(thresh)) 
+```
+
+```{r  cache=TRUE }
+# we would like to keep genes that have at least 31 TRUES in each row of thresh
+keep <- rowSums(thresh) >= 31
+# Subset the rows of countdata to keep the more highly expressed genes
+transcripts_keep <- transcripts[keep,]
+summary(keep) 
+```
+
+```{r   }
+dim(transcripts_keep) 
+```
+
+```{r   }
+# Let's have a look and see whether our threshold of 1 does indeed correspond to a count of about 30-40
+# We will look at the first sample
+## plot(transcripts_cpm[,1],transcripts[,1],
+##      ylim=c(0,50),xlim=c(0,3))
+## abline(v=1) 
+```
+
+
+<a id="org3f33086"></a>
+
+## Convert counts to DGEList object
+
+Next we&rsquo;ll create a `DGEList` object. This is an object used by *edgeR*
+to store count data. It has a number of slots for storing various
+parameters about the data.
+
+```{r  cache=TRUE }
+dgeObj <- DGEList(transcripts_keep)
+# have a look at dgeObj
+dgeObj[,1:5] 
+```
+
+
+<a id="org4ad396b"></a>
+
+## Quality control
+
+We can look at a few different plots to check that the data is good
+quality.
+
+
+<a id="org66ccd64"></a>
+
+### Library sizes and distribution plots
+
+Check how many reads we have for each sample in the `dgeObj`.
+
+```{r  cache=TRUE }
+dgeObj$samples$lib.size 
+```
+
+Plot the library sizes as a barplot to see whether there are any major
+discrepanies between the samples more easily.
+
+```{r  cache=TRUE }
+png("./figs_transcr/barplot_sample_sizes.png", width = 2000, height = 2000, res = 300)
+# The names argument tells the barplot to use the sample names on the x-axis
+# The las argument rotates the axis names
+barplot(dgeObj$samples$lib.size, names=colnames(dgeObj), las=2, cex.names = .5)
+# Add a title to the plot
+## title("Barplot of library sizes")
+title(paste("Barplot of library sizes\n", "Number of samples: AD = 84, PSP = 85, Control = 31"))
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/barplot_sample_sizes.png") 
+```
+
+Count data is not normally distributed, so if we want to examine the
+distributions of the raw counts we need to log the counts. Next we&rsquo;ll
+use box plots to check the distribution of the read counts on the log2
+scale. We can use the `cpm` function to get log2 counts per million,
+which are corrected for the different library sizes. The `cpm` function
+also adds a small offset to avoid taking log of zero.
+
+```{r   }
+# Get log2 counts per million
+logcounts <- cpm(dgeObj, log = TRUE)
+# Check distributions of samples using boxplot
+png("./figs_transcr/boxplot_samples_unnorm.png", width = 4000, height = 2000, res = 300)
+boxplot(logcounts, xlab="", ylab="Log2 counts per million", las=2, cex.axis=.4, outcex=.1)
+# Let's add a blue horizontal line that corresponds to the median logCPM
+abline(h=median(logcounts),col="blue")
+title("Boxplots of logCPMs (unnormalised). Number of samples: AD = 82, PSP = 84, Control = 31")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/boxplot_samples_unnorm.png") 
+```
+
+From the boxplots we see that overall the density distributions of raw
+log-intensities are not identical but still not very different.
+
+
+<a id="orgd79c31e"></a>
+
+### Multidimensional scaling plots
+
+We use the `plotMDS` function to create the MDS plot.  We colour the
+samples according to the grouping information.
+
+```{r   }
+levels(id_keys$Diagnosis %>% as.factor) 
+```
+
+```{r   }
+col.condition <- c("red", "green", "purple")[id_keys$Diagnosis %>% as.factor] 
+```
+
+```{r  cache=TRUE }
+png("./figs_transcr/mds_plot.png", width = 2000, height = 2000, res = 300)
+plotMDS(dgeObj, col=col.condition)
+legend("topleft", fill=c("red", "green", "purple"), legend = levels(id_keys$Diagnosis %>% as.factor))
+# Add a title
+title("MDS plot. Number of samples: AD = 82, PSP = 84, Control = 31")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/mds_plot.png") 
+```
+
+
+<a id="orgaaa0116"></a>
+
+## Normalisation for composition bias
+
+The trimmed mean of M-values normalization method (TMM) is performed
+to eliminate composition biases between libraries. This generates a
+set of normalization factors, where the product of these factors and
+the library sizes defines the effective library size. The
+`calcNormFactors` function in `edgeR` calculates the normalization factors
+between libraries. TMM normalisation (and most scaling normalisation
+methods) scale relative to one sample.
+
+```{r   }
+# Apply normalisation to DGEList object
+dgeObj <- calcNormFactors(dgeObj) 
+```
+
+This will update the normalisation factors in the `DGEList` object
+(their default values are 1).
+
+```{r   }
+dgeObj$samples %>% head 
+```
+
+The normalization factors multiply to unity across all libraries. A
+normalization factor below one indicates that the library size will be
+scaled down, as there is more suppression (i.e., composition bias) in
+that library relative to the other libraries. This is also equivalent to
+scaling the counts upwards in that sample. Conversely, a factor above
+one scales up the library size and is equivalent to downscaling the
+counts.
+
+The first two samples have very different normalisation factors. If we
+plot mean difference plots using the `plotMD` function for these
+samples, we see the composition bias problem. We will use the
+`logcounts`, which have been normalised for library size, but not for
+composition bias.
+
+```{r   }
+png("./figs_transcr/mean_difference.png", width = 2000, height = 2000, res = 300)
+par(mfrow=c(1,2))
+plotMD(logcounts, column = 1)
+abline(h=0,col="grey")
+plotMD(logcounts,column = 2)
+abline(h=0,col="grey")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/mean_difference.png") 
+```
+
+The mean-difference plots show average expression (mean: x-axis)
+against log-fold-changes (difference: y-axis). Because our `DGEList`
+object contains the normalisation factors, plots using `dgeObj`, show
+the composition bias problem has been solved.
+
+```{r   }
+png("./figs_transcr/mean_difference_2.png", width = 2000, height = 2000, res = 300)
+par(mfrow=c(1,2))
+plotMD(dgeObj,column = 1)
+abline(h=0,col="grey")
+plotMD(dgeObj,column = 2)
+abline(h=0,col="grey")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/mean_difference_2.png") 
+```
+
+```{r   }
+## save(group, dgeObj,sampleinfo,file="./Robjects/preprocessing.Rdata") 
+```
+
+
+<a id="org8eba10b"></a>
+
+## Differential expression with edgeR
+
+
+<a id="orge340376"></a>
+
+### Create the design matrix
+
+```{r   }
+diagnosis <- as.character(id_keys$Diagnosis)
+design <- model.matrix( ~ diagnosis + 0) 
+```
+
+```{r   }
+## plotMDS(dgeObj, labels=diagnosis, cex=0.75, xlim=c(-4, 5)) 
+```
+
+
+<a id="org939d62f"></a>
+
+### Data exploration
+
+The common dispersion estimates the overall BCV of the dataset, averaged
+over all genes:
+
+```{r   }
+dgeObj <- estimateCommonDisp(dgeObj) 
+```
+
+Then we estimate gene-wise dispersion estimates, allowing a possible
+trend with averge count size:
+
+```{r   }
+dgeObj <- estimateGLMTrendedDisp(dgeObj)
+dgeObj <- estimateTagwiseDisp(dgeObj) 
+```
+
+Plot the estimated dispersions:
+
+```{r   }
+png("./figs_transcr/est_dispersion.png", width = 2000, height = 2000, res = 300)
+plotBCV(dgeObj)
+mytitle = "Number of samples: AD = 82, PSP = 84, Control = 31"
+mtext(side=3, line=2, at=-0.01, adj=0, cex=1, mytitle)
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/est_dispersion.png") 
+```
+
+
+<a id="orgdf581ea"></a>
+
+### Testing for differential expression
+
+First, we fit genewise glms:
+
+```{r   }
+# Fit the linear model
+fit <- glmFit(dgeObj, design)
+names(fit) 
+```
+
+```{r   }
+head(coef(fit)) 
+```
+
+Conduct likelihood ratio tests for luminal vs basal and show the top
+genes:
+
+
+<a id="orgb0d008c"></a>
+
+### Significantly DE transcripts: AD vs Control
+
+Build a contrast AD vs Control
+
+```{r   }
+AvsC <- makeContrasts(diagnosisAD - diagnosisControl, levels=design) 
+```
+
+```{r   }
+lrt.AvsC <- glmLRT(fit, contrast=AvsC)
+## topTags(lrt.AvsC, sort.by = "logFC", p.value = 0.05, n = 61) 
+```
+
+Save list of gene IDs for transcripts.
+
+```{r   }
+## gene_ids_tr <- lrt.AvsC %>%
+##   rownames %>%
+##   gconvert(organism="hsapiens", target="ENSG", filter_na = FALSE) %>%
+##   dplyr::select("GeneID" = name)
+
+## saveRDS(gene_ids_tr, "./results_transcr/gene_ids_tr.rds")
+
+gene_ids_tr <- readRDS("./results_transcr/gene_ids_tr.rds") 
+```
+
+```{r   }
+## Set log-fold cutoff for transcripts
+fc_cut_tr <- 2
+
+ad_vs_control_top_tr  <- topTags(lrt.AvsC, sort.by = "logFC", p.value = 0.05, n = 100) %>%
+  data.frame %>%
+  filter(abs(logFC) >= fc_cut_tr) %>%
+  rownames_to_column(var = "TranscriptIDs")
+
+AD_vs_Control_GeneIDs <- ad_vs_control_top_tr$TranscriptIDs %>%
+  noquote %>%
+  gconvert(organism="hsapiens", target="ENSG") %>%
+  dplyr::select("GeneID" = name)
+## write.csv(ad_vs_control_prot, "./results/prot_ad_vs_control.csv")
+
+write.csv(data.frame(AD_vs_Control_GeneIDs, ad_vs_control_top_tr),
+          "./results_transcr/ad_vs_control_tr.csv")
+
+knitr::kable(data.frame(AD_vs_Control_GeneIDs, ad_vs_control_top_tr),
+             caption = "Top DE transcripts: AD vs Control") 
+```
+
+We get normalized data with [cpm(dgeObj, normalized.lib.sizes = TRUE)](https://support.bioconductor.org/p/50972/)
+for the top AD vs Control transcripts.
+
+```{r   }
+all_samples_ad_vs_control_tr <- cpm(dgeObj, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% ad_vs_control_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(ad_cols)) %>%
+  `rownames<-`(AD_vs_Control_GeneIDs$GeneID %>% make.unique) 
+```
+
+
+<a id="org33c99a0"></a>
+
+### Significantly DE transcripts: PSP vs Control
+
+Build a contrast PSP vs Control
+
+```{r   }
+PvsC <- makeContrasts(diagnosisPSP - diagnosisControl, levels=design) 
+```
+
+```{r   }
+lrt.PvsC <- glmLRT(fit, contrast=PvsC)
+## topTags(lrt.PvsC, sort.by = "logFC", p.value = 0.05, n = 25) 
+```
+
+```{r   }
+## fold-change cutoff here is 1.9 to make the numger of transcripts
+## close to the number of proteins
+psp_vs_control_top_tr  <- topTags(lrt.PvsC, sort.by = "logFC", p.value = 0.05, n = 200) %>%
+  data.frame %>%
+  filter(abs(logFC) >= 1.9) %>%
+  rownames_to_column(var = "TranscriptIDs")
+
+PSP_vs_Control_GeneIDs <- psp_vs_control_top_tr$TranscriptIDs %>%
+  noquote %>%
+  gconvert(organism="hsapiens", target="ENSG") %>%
+  dplyr::select("GeneID" = name)
+
+write.csv(data.frame(PSP_vs_Control_GeneIDs, psp_vs_control_top_tr),
+          "./results_transcr/psp_vs_control_tr.csv")
+
+knitr::kable(data.frame(PSP_vs_Control_GeneIDs, psp_vs_control_top_tr),
+             caption = "Top DE transcripts: PSP vs Control") 
+```
+
+We get normalized data with [cpm(dgeObj, normalized.lib.sizes = TRUE)](https://support.bioconductor.org/p/50972/)
+for the top AD vs Control transcripts.
+
+```{r   }
+all_samples_psp_vs_control_tr <- cpm(dgeObj, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% psp_vs_control_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(psp_cols)) %>%
+  `rownames<-`(PSP_vs_Control_GeneIDs$GeneID %>% make.unique) 
+```
+
+
+<a id="org2632a86"></a>
+
+### Significantly DE transcripts: AD vs PSP
+
+Build a contrast AD vs PSP
+
+```{r   }
+AvsP <- makeContrasts(diagnosisAD - diagnosisPSP, levels=design) 
+```
+
+```{r   }
+lrt.AvsP <- glmLRT(fit, contrast=AvsP)
+## topTags(lrt.AvsP, sort.by = "logFC", p.value = 0.05, n = 25) 
+```
+
+```{r   }
+## fold-change cutoff here is 1 to make the numger of transcripts
+## close to the number of proteins
+ad_vs_psp_top_tr  <- topTags(lrt.AvsP, sort.by = "logFC", p.value = 0.05, n = 500) %>%
+  data.frame %>%
+  filter(abs(logFC) >= 1) %>%
+  rownames_to_column(var = "TranscriptIDs")
+
+AD_vs_PSP_GeneIDs <- ad_vs_psp_top_tr$TranscriptIDs %>%
+  noquote %>%
+  gconvert(organism="hsapiens", target="ENSG", filter_na = FALSE) %>%
+  dplyr::select("GeneID" = name)
+## write.csv(ad_vs_psp_prot, "./results/prot_ad_vs_psp.csv")
+
+write.csv(data.frame(AD_vs_PSP_GeneIDs, ad_vs_psp_top_tr),
+          "./results_transcr/ad_vs_psp_tr.csv")
+
+knitr::kable(data.frame(AD_vs_PSP_GeneIDs, ad_vs_psp_top_tr),
+             caption = "Top DE transcripts: AD vs PSP") 
+```
+
+We get normalized data with [cpm(dgeObj, normalized.lib.sizes = TRUE)](https://support.bioconductor.org/p/50972/)
+for the top AD vs Control transcripts.
+
+```{r   }
+all_samples_ad_vs_psp_tr <- cpm(dgeObj, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% ad_vs_psp_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(ad_cols)) %>%
+  `rownames<-`(AD_vs_PSP_GeneIDs$GeneID %>% make.unique) 
+```
+
+
+<a id="org466cb97"></a>
+
+### Save lists of DE transcripts to Excel
+
+```{r   }
+write.xlsx(all_samples_ad_vs_control_tr, "./results_transcr/transcriptsdata.xlsx",
+           sheetName = "all_samples_ad_vs_control_tr", append = TRUE)
+write.xlsx(all_samples_ad_vs_psp_tr, "./results_transcr/transcriptsdata.xlsx",
+           sheetName = "all_samples_ad_vs_psp_tr", append = TRUE)
+write.xlsx(all_samples_psp_vs_control_tr, "./results_transcr/transcriptsdata.xlsx",
+           sheetName = "all_samples_psp_vs_control_tr", append = TRUE)
+write.xlsx(ad_vs_control_top_tr, "./results_transcr/transcriptsdata.xlsx",
+           sheetName = "ad_vs_control_top_tr", append = TRUE)
+write.xlsx(psp_vs_control_top_tr, "./results_transcr/transcriptsdata.xlsx",
+           sheetName = "psp_vs_control_top_tr", append = TRUE)
+write.xlsx(ad_vs_psp_top_tr, "./results_transcr/transcriptsdata.xlsx",
+           sheetName = "ad_vs_psp_top_tr", append = TRUE) 
+```
+
+
+<a id="org2bab121"></a>
+
+## Clustering and heatmaps
+
+
+<a id="orgd2be456"></a>
+
+### Clustering AD-Control
+
+Prepare an object for clustering (gather AD and Control samples in one data frame).
+
+```{r   }
+all_samples_ad_and_control_tr <- cpm(dgeObj, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% ad_vs_control_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(c(ad_cols, control_cols))) %>%
+  `colnames<-`(c(make.unique(rep("AD", length(ad_cols))),
+                 make.unique(rep("Control", length(control_cols))))) %>%
+  `rownames<-`(AD_vs_Control_GeneIDs$GeneID %>% make.unique) 
+```
+
+Transform to matrix
+
+```{r   }
+## data.matrix() leaves numeric data as is.
+ad_tr_matrix <- data.matrix(all_samples_ad_and_control_tr)
+
+## rownames(ad_tr_matrix) <- dat_filt_ad$PIDshort
+## ad_tr_matrix <- ad_tr_matrix[,-1] 
+```
+
+```{r   }
+ad_tr_scaled <- ad_tr_matrix %>% t %>% scale %>% t 
+```
+
+Euclidean distance between experiments: AD & Control
+
+```{r   }
+ad_dist_sampl <- ad_tr_scaled %>% t %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Euclidean distance between proteins: AD & Control
+
+```{r   }
+ad_dist_tr <- ad_tr_scaled %>% 
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Hierarchical Ward&rsquo;s clustering 
+
+```{r  fig.asp = 1.5 }
+ad_hclust_sampl <- hclust(ad_dist_sampl, method = "ward.D2", members = NULL)
+ad_hclust_tr <- hclust(ad_dist_tr, method = "ward.D2", members = NULL)
+
+
+png("./figs_transcr/hclust_ad.png", width = 2500, height = 3000, res = 300)
+par(mfrow = c(2,1))
+ad_hclust_sampl %>% plot(cex = 0.4, main = "Conditions. Number of samples: AD = 82, Control = 31")
+ad_hclust_tr %>% plot(cex = 0.6, main = "Proteins. Number of samples: AD = 82, Control = 31")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/hclust_ad.png") 
+```
+
+
+<a id="orgcfd1d66"></a>
+
+### Heatmap AD-Control
+
+```{r   }
+# Set colours for heatmap, 25 increments
+my_palette <- colorRampPalette(c("blue","white","red"))(n = 25)
+
+png("./figs_transcr/heatmap_ad.png", width = 2000, height = 2000, res = 300)
+# Plot heatmap with heatmap.2
+par(cex.main=0.75) # Shrink title fonts on plot
+ad_tr_scaled %>%
+  # Plot heatmap
+  gplots::heatmap.2(.,                     # Tidy, normalised data
+                    Colv=as.dendrogram(ad_hclust_sampl),     # Experiments clusters in cols
+                    Rowv=as.dendrogram(ad_hclust_tr),     # Protein clusters in rows
+                    revC=TRUE,                  # Flip plot to match pheatmap
+                    density.info="histogram",   # Plot histogram of data and colour key
+                    trace="none",               # Turn of trace lines from heat map
+                    col = my_palette,           # Use my colour scheme
+                    cexRow=0.3, cexCol=0.2,     # Amend row and column label fonts
+                    xlab = paste0("Number of samples: AD = ", length(ad_cols), ", Control = ", length(control_cols))
+                    )
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/heatmap_ad.png") 
+```
+
+
+<a id="orgcd70d48"></a>
+
+### Clustering PSP-Control
+
+Prepare an object for clustering (gather AD and Control samples in one data frame).
+
+```{r   }
+all_samples_psp_and_control_tr <- cpm(dgeObj, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% psp_vs_control_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(c(psp_cols, control_cols))) %>%
+  `colnames<-`(c(make.unique(rep("PSP", length(ad_cols))),
+                 make.unique(rep("Control", length(control_cols))))) %>%
+  `rownames<-`(PSP_vs_Control_GeneIDs$GeneID %>% make.unique) 
+```
+
+Transform to matrix
+
+```{r   }
+## data.matrix() leaves numeric data as is.
+psp_tr_matrix <- data.matrix(all_samples_psp_and_control_tr) 
+```
+
+```{r   }
+psp_tr_scaled <- psp_tr_matrix %>% t %>% scale %>% t 
+```
+
+Euclidean distance between experiments: PSP & Control
+
+```{r   }
+psp_dist_sampl <- psp_tr_scaled %>% t %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Euclidean distance between proteins: PSP & Control
+
+```{r   }
+psp_dist_tr <- psp_tr_scaled %>% 
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Hierarchical Ward&rsquo;s clustering 
+
+```{r  fig.asp = 1.5 }
+psp_hclust_sampl <- hclust(psp_dist_sampl, method = "ward.D2", members = NULL)
+psp_hclust_tr <- hclust(psp_dist_tr, method = "ward.D2", members = NULL)
+
+
+png("./figs_transcr/hclust_psp.png", width = 2500, height = 3000, res = 300)
+par(mfrow = c(2,1))
+psp_hclust_sampl %>% plot(cex = 0.4, main = "Conditions. Number of samples: PSP = 84, Control = 31")
+psp_hclust_tr %>% plot(cex = 0.6, main = "Proteins. Number of samples: PSP = 84, Control = 31")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/hclust_psp.png") 
+```
+
+
+<a id="org53d287f"></a>
+
+### Heatmap PSP-Control
+
+```{r  fig.asp = 1 }
+# Set colours for heatmap, 25 increments
+my_palette <- colorRampPalette(c("blue","white","red"))(n = 25)
+
+png("./figs_transcr/heatmap_psp.png", width = 2000, height = 2000, res = 300)
+# Plot heatmap with heatmap.2
+par(cex.main=0.75) # Shrink title fonts on plot
+psp_tr_scaled %>%
+  # Plot heatmap
+  gplots::heatmap.2(.,                     # Tidy, normalised data
+                    Colv=as.dendrogram(psp_hclust_sampl),     # Experiments clusters in cols
+                    Rowv=as.dendrogram(psp_hclust_tr),     # Protein clusters in rows
+                    revC=TRUE,                  # Flip plot to match pheatmap
+                    density.info="histogram",   # Plot histogram of data and colour key
+                    trace="none",               # Turn of trace lines from heat map
+                    col = my_palette,           # Use my colour scheme
+                    cexRow=0.3, cexCol=0.2,     # Amend row and column label fonts
+                    xlab = paste0("Number of samples: PSP = ", length(psp_cols), ", Control = ", length(control_cols))
+                    )
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/heatmap_psp.png") 
+```
+
+
+<a id="orge89176d"></a>
+
+### Clustering AD-PSP
+
+Prepare an object for clustering (gather AD and Control samples in one data frame).
+
+```{r   }
+all_samples_ad_and_psp_tr <- cpm(dgeObj, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% ad_vs_psp_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(c(ad_cols, psp_cols))) %>%
+  `colnames<-`(c(make.unique(rep("AD", length(ad_cols))),
+                 make.unique(rep("PSP", length(control_cols))))) %>%
+  `rownames<-`(AD_vs_PSP_GeneIDs$GeneID %>% make.unique) 
+```
+
+Transform to matrix
+
+```{r   }
+## data.matrix() leaves numeric data as is.
+ad_psp_tr_matrix <- data.matrix(all_samples_ad_and_psp_tr) 
+```
+
+```{r   }
+ad_psp_tr_scaled <- ad_psp_tr_matrix %>% t %>% scale %>% t 
+```
+
+Euclidean distance between experiments: AD & Control
+
+```{r   }
+ad_psp_dist_sampl <- ad_psp_tr_scaled %>% t %>%
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Euclidean distance between proteins: AD & PSP
+
+```{r   }
+ad_psp_dist_tr <- ad_psp_tr_scaled %>% 
+  dist(., method = "euclidean", diag = FALSE, upper = FALSE) 
+```
+
+Hierarchical Ward&rsquo;s clustering 
+
+```{r  fig.asp = 1.5 }
+ad_psp_hclust_sampl <- hclust(ad_psp_dist_sampl, method = "ward.D2", members = NULL)
+ad_psp_hclust_tr <- hclust(ad_psp_dist_tr, method = "ward.D2", members = NULL)
+
+
+png("./figs_transcr/hclust_ad_psp.png", width = 2500, height = 3000, res = 300)
+par(mfrow = c(2,1))
+ad_psp_hclust_sampl %>% plot(cex = 0.4, main = "Conditions. Number of samples: AD = 82, PSP = 84")
+ad_psp_hclust_tr %>% plot(cex = 0.6, main = "Proteins. Number of samples: AD = 82, PSP = 84")
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/hclust_ad_psp.png") 
+```
+
+
+<a id="orge8dbaa5"></a>
+
+### Heatmap AD-PSP
+
+```{r   }
+# Set colours for heatmap, 25 increments
+my_palette <- colorRampPalette(c("blue","white","red"))(n = 25)
+
+png("./figs_transcr/heatmap_ad_psp.png", width = 2000, height = 2000, res = 300)
+# Plot heatmap with heatmap.2
+par(cex.main=0.75) # Shrink title fonts on plot
+ad_psp_tr_scaled %>%
+  # Plot heatmap
+  gplots::heatmap.2(.,                     # Tidy, normalised data
+                    Colv=as.dendrogram(ad_psp_hclust_sampl),     # Experiments clusters in cols
+                    Rowv=as.dendrogram(ad_psp_hclust_tr),     # Protein clusters in rows
+                    revC=TRUE,                  # Flip plot to match pheatmap
+                    density.info="histogram",   # Plot histogram of data and colour key
+                    trace="none",               # Turn of trace lines from heat map
+                    col = my_palette,           # Use my colour scheme
+                    cexRow=0.3, cexCol=0.2,     # Amend row and column label fonts
+                    xlab = paste0("Number of samples: AD = ", length(ad_cols), ", PSP = ", length(psp_cols))
+                    )
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/heatmap_ad_psp.png") 
+```
+
+
+<a id="org972e616"></a>
+
+## Venn diagram for significantly DE transcripts
+
+
+<a id="orgb360026"></a>
+
+### All transcripts
+
+```{r  fig.asp = 1 }
+## venn_list_tr <- list("AD vs Control" =  topTags(lrt.AvsC, sort.by = "logFC",
+##                                                 p.value = 0.05, n = nrow(lrt.AvsC)) %>%
+##                        rownames() %>%
+##                        noquote() %>%
+##                        gconvert(organism="hsapiens", target="ENSG") %>%
+##                        pull(name),
+##                      "PSP vs Control" = topTags(lrt.PvsC, sort.by = "logFC",
+##                                                 p.value = 0.05, n = nrow(lrt.PvsC)) %>%
+##                        rownames() %>%
+##                        noquote() %>%
+##                        gconvert(organism="hsapiens", target="ENSG") %>%
+##                        pull(name),
+##                      "AD vs PSP" = topTags(lrt.AvsP, sort.by = "logFC",
+##                                            p.value = 0.05, n = nrow(lrt.AvsP)) %>%
+##                        rownames() %>%
+##                        noquote() %>%
+##                        gconvert(organism="hsapiens", target="ENSG") %>%
+##                        pull(name))
+
+## saveRDS(venn_list_tr, "./results_transcr/venn_list_tr.rds")
+
+venn_list_tr <- readRDS("./results_transcr/venn_list_tr.rds")
+
+# Prevent the output of a log file
+futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
+
+# Create a venn diagram object
+tr_venn <- venn.diagram(venn_list_tr,
+                          NULL,
+                          col = "transparent",
+                          fill = c("cornflowerblue", "green", "yellow"),
+                          alpha = 0.50,
+                          cex = 0.8,
+                          fontfamily = "sans",
+                          fontface = "bold",
+                          cat.col = c("darkblue", "darkgreen", "orange"),
+                          cat.cex = 0.8,
+                          cat.fontfamily = "sans",
+                          margin = 0.2,
+                          main = "Pairwise significantly DE transctipts identified in the experiment",
+                          main.pos = c(0.5, 1.05),
+                          main.fontfamily = "sans",
+                          sub = "Number of samples: AD = 82, PSP = 84, Control = 31",
+                          sub.pos = c(0.5, 0.92),
+                          sub.cex = 0.8,
+                          sub.fontfamily = "sans",
+                          print.mode = c("raw","percent") # Show both numbers and percent
+                          )
+
+# Plot the venn diagram using the gridExtra package
+png("./figs_transcr/venn.png", width = 2000, height = 2000, res = 300)
+grid.arrange(gTree(children = tr_venn))
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/venn.png") 
+```
+
+```{r  fig.asp = 1 }
+## venn_list_tr_2 <- list(
+##   "AD-C +"  =  topTags(lrt.AvsC, sort.by = "logFC",
+##                        p.value = 0.05, n = nrow(lrt.AvsC)) %>%
+##     data.frame() %>%
+##     filter(logFC > 0) %>%
+##     rownames() %>%
+##     noquote() %>%
+##     gconvert(organism="hsapiens", target="ENSG") %>%
+##     pull(name),
+##   "AD-C -"  =  topTags(lrt.AvsC, sort.by = "logFC",
+##                        p.value = 0.05, n = nrow(lrt.AvsC)) %>%
+##     data.frame() %>%
+##     filter(logFC < 0) %>%
+##     rownames() %>%
+##     noquote() %>%
+##     gconvert(organism="hsapiens", target="ENSG") %>%
+##     pull(name),
+##   "P-C +" = topTags(lrt.PvsC, sort.by = "logFC",
+##                     p.value = 0.05, n = nrow(lrt.PvsC)) %>%
+##     data.frame() %>%
+##     filter(logFC > 0) %>%
+##     rownames() %>%
+##     noquote() %>%
+##     gconvert(organism="hsapiens", target="ENSG") %>%
+##     pull(name),
+##   "P-C -" = topTags(lrt.PvsC, sort.by = "logFC",
+##                     p.value = 0.05, n = nrow(lrt.PvsC)) %>%
+##     data.frame() %>%
+##     filter(logFC < 0) %>%
+##     rownames() %>%
+##     noquote() %>%
+##     gconvert(organism="hsapiens", target="ENSG") %>%
+##     pull(name),
+##   "AD-PSP +" = topTags(lrt.AvsP, sort.by = "logFC",
+##                        p.value = 0.05, n = nrow(lrt.AvsP)) %>%
+##     data.frame() %>%
+##     filter(logFC > 0) %>%
+##     rownames() %>%
+##     noquote() %>%
+##     gconvert(organism="hsapiens", target="ENSG") %>%
+##     pull(name),
+##   "AD-PSP -" = topTags(lrt.AvsP, sort.by = "logFC",
+##                        p.value = 0.05, n = nrow(lrt.AvsP)) %>%
+##     data.frame() %>%
+##     filter(logFC < 0) %>%
+##     rownames() %>%
+##     noquote() %>%
+##     gconvert(organism="hsapiens", target="ENSG") %>%
+##     pull(name)
+## )
+
+## saveRDS(venn_list_tr_2, "./results_transcr/venn_list_tr_2.rds")
+
+venn_list_tr_2 <- readRDS("./results_transcr/venn_list_tr_2.rds") 
+```
+
+
+<a id="org84260fb"></a>
+
+### Upregulated transcripts
+
+```{r   }
+tr_venn_up <- venn.diagram(venn_list_tr_2[c(1,3,5)],NULL,
+                          col = "transparent",
+                          fill = c("cornflowerblue", "green", "yellow"),
+                          alpha = 0.50,
+                          cex = 0.8,
+                          fontfamily = "sans",
+                          fontface = "bold",
+                          cat.col = c("darkblue", "darkgreen", "orange"),
+                          cat.cex = 0.8,
+                          cat.fontfamily = "sans",
+                          margin = 0.2,
+                          main = "Pairwise significantly upregulated transcripts (adj.p<0.05) identified in the experiment",
+                          main.pos = c(0.5, 1.05),
+                          main.fontfamily = "sans",
+                          sub = "Number of samples: AD = 82, PSP = 84, Control = 31",
+                          sub.pos = c(0.5, 0.92),
+                          sub.cex = 0.8,
+                          sub.fontfamily = "sans",
+                          print.mode = c("raw","percent") # Show both numbers and percent
+                          )
+
+# Plot the venn diagram using the gridExtra package
+png("./figs_transcr/venn_up.png", width = 2000, height = 2000, res = 300)
+grid.arrange(gTree(children = tr_venn_up))
+dev.off()
+ 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/venn_up.png") 
+```
+
+
+<a id="org699f15e"></a>
+
+### Downregulated transcripts
+
+```{r   }
+tr_venn_down <- venn.diagram(venn_list_tr_2[c(2,4,6)],NULL,
+                          col = "transparent",
+                          fill = c("cornflowerblue", "green", "yellow"),
+                          alpha = 0.50,
+                          cex = 0.8,
+                          fontfamily = "sans",
+                          fontface = "bold",
+                          cat.col = c("darkblue", "darkgreen", "orange"),
+                          cat.cex = 0.8,
+                          cat.fontfamily = "sans",
+                          margin = 0.2,
+                          main = "Pairwise significantly downregulated transcripts (adj.p<0.05) identified in the experiment",
+                          main.pos = c(0.5, 1.05),
+                          main.fontfamily = "sans",
+                          sub = "Number of samples: AD = 82, PSP = 84, Control = 31",
+                          sub.pos = c(0.5, 0.92),
+                          sub.cex = 0.8,
+                          sub.fontfamily = "sans",
+                          print.mode = c("raw","percent") # Show both numbers and percent
+                          )
+
+# Plot the venn diagram using the gridExtra package
+png("./figs_transcr/venn_down.png", width = 2000, height = 2000, res = 300)
+grid.arrange(gTree(children = tr_venn_down))
+dev.off()
+ 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/venn_down.png") 
+```
+
+
+<a id="org20fb498"></a>
+
+## Enchanced Volcano plots
+
+```{r   }
+
+EnhancedVolcano(lrt.AvsC %>% data.frame,
+                x = "logFC",
+                y = "PValue",
+                lab = gene_ids_tr$GeneID,
+                title = 'AD versus Control',
+                subtitle = "Number of samples: AD = 82, PSP = 84, Control = 31",
+                pCutoff = 0.05,
+                FCcutoff = 2,
+                pointSize = 0.5,
+                axisLabSize = 10,
+                labSize = 2.0)
+ggsave("./figs_transcr/ad_vs_control_volcano.png") 
+```
+
+```{r   }
+
+EnhancedVolcano(lrt.PvsC %>% data.frame,
+                x = "logFC",
+                y = "PValue",
+                lab = gene_ids_tr$GeneID,
+                title = 'PSP versus Control',
+                subtitle = "Number of samples: AD = 82, PSP = 84, Control = 31",
+                pCutoff = 0.05,
+                FCcutoff = 1.9,
+                pointSize = 0.5,
+                axisLabSize = 10,
+                labSize = 2.0)
+ggsave("./figs_transcr/psp_vs_control_volcano.png")
+ 
+```
+
+```{r   }
+EnhancedVolcano(lrt.AvsP %>% data.frame,
+                x = "logFC",
+                y = "PValue",
+                lab = gene_ids_tr$GeneID,
+                title = 'AD versus PSP',
+                subtitle = "Number of samples: AD = 82, PSP = 84, Control = 31",
+                pCutoff = 0.05,
+                FCcutoff = 1,
+                pointSize = 0.5,
+                axisLabSize = 10,
+                labSize = 2.0)
+ggsave("./figs_transcr/ad_vs_psp_volcano.png") 
+```
+
+
+<a id="org93d155b"></a>
+
+## Boxplots
+
+
+<a id="org664bf4f"></a>
+
+### AD vs Control
+
+```{r  fig.show='hide' }
+cpm(dgeObj, log = TRUE, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% ad_vs_control_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(c(ad_cols, control_cols, psp_cols))) %>%
+  `rownames<-`(AD_vs_Control_GeneIDs$GeneID %>% make.unique) %>%
+  t %>% data.frame %>%
+  dplyr::select(1:25) %>%
+  mutate(condition = c(rep("AD", length(ad_cols)),
+                       rep("Control", length(control_cols)),
+                       rep("PSP", length(psp_cols)))) %>%
+  filter(condition != "PSP") %>%
+  ## For ggplot, you need to convert the data from wide format to long format.
+  pivot_longer(-condition, names_to = "protein", values_to = "level") %>%
+  ## gglot uses the "condition" column to group boxplots: fill=condition in aes().
+  ggplot(aes(protein, level, fill=condition)) +
+  geom_boxplot(outlier.size = 0.5) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 3)) +
+  xlab("") +
+  ylab("log2 expression level") +
+  ggtitle("AD vs Control top 25 significant genes. Number of samples: AD = 82, Control = 31") +
+  theme_light() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+ggsave("./figs_transcr/boxplot_ad_vs_control.png", dpi = 300, scale = 2, width = 6, height = 3, units = "in") 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/boxplot_ad_vs_control.png") 
+```
+
+
+<a id="org9c18ace"></a>
+
+### PSP vs Control
+
+```{r  fig.show='hide' }
+cpm(dgeObj, log = TRUE, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% psp_vs_control_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(c(ad_cols, control_cols, psp_cols))) %>%
+  `rownames<-`(PSP_vs_Control_GeneIDs$GeneID %>% make.unique) %>%
+  t %>% data.frame %>%
+  dplyr::select(1:25) %>%
+  mutate(condition = c(rep("AD", length(ad_cols)),
+                       rep("Control", length(control_cols)),
+                       rep("PSP", length(psp_cols)))) %>%
+  filter(condition != "AD") %>%
+  ## For ggplot, you need to convert the data from wide format to long format.
+  pivot_longer(-condition, names_to = "protein", values_to = "level") %>%
+  ## gglot uses the "condition" column to group boxplots: fill=condition in aes().
+  mutate(conditions = factor(condition, levels = c("PSP", "Control"))) %>%
+  ggplot(aes(protein, level, fill=conditions)) +
+  geom_boxplot(outlier.size = 0.5) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 3)) +
+  xlab("") +
+  ylab("log2 expression level") +
+  ggtitle("PSP vs Control top 25 significant genes. Number of samples: PSP = 84, Control = 31") +
+  theme_light() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+ggsave("./figs_transcr/boxplot_psp_vs_control.png", dpi = 300, scale = 2, width = 6, height = 3, units = "in") 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/boxplot_psp_vs_control.png") 
+```
+
+
+<a id="org5c45fbc"></a>
+
+### AD vs PSP
+
+```{r  fig.show='hide' }
+cpm(dgeObj, log = TRUE, normalized.lib.sizes = TRUE) %>%
+  data.frame() %>%
+  filter(rownames(.) %in% ad_vs_psp_top_tr$TranscriptIDs) %>%
+  dplyr::select(all_of(c(ad_cols, control_cols, psp_cols))) %>%
+  `rownames<-`(AD_vs_PSP_GeneIDs$GeneID %>% make.unique) %>%
+  t %>% data.frame %>%
+  dplyr::select(1:25) %>%
+  mutate(condition = c(rep("AD", length(ad_cols)),
+                       rep("Control", length(control_cols)),
+                       rep("PSP", length(psp_cols)))) %>%
+  filter(condition != "Control") %>%
+  ## For ggplot, you need to convert the data from wide format to long format.
+  pivot_longer(-condition, names_to = "protein", values_to = "level") %>%
+  ## gglot uses the "condition" column to group boxplots: fill=condition in aes().
+  ggplot(aes(protein, level, fill=condition)) +
+  geom_boxplot(outlier.size = 0.5) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 3)) +
+  xlab("") +
+  ylab("log2 expression level") +
+  ggtitle("AD vs PSP top 25 significant genes. Number of samples: AD = 82, PSP = 84") +
+  theme_light() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+ggsave("./figs_transcr/boxplot_ad_vs_psp.png", dpi = 300, scale = 2, width = 6, height = 3, units = "in") 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_transcr/boxplot_ad_vs_psp.png") 
+```
+
+
+<a id="orgd9cc114"></a>
+
+# Correlation Analysis
+
+We use results obtained earlier.
+
+
+<a id="orgffc2b73"></a>
+
+## A function to format the correlation matrix (for saving in CSV)
+
+From: [A simple function to format the correlation matrix](http://www.sthda.com/english/wiki/correlation-matrix-a-quick-start-guide-to-analyze-format-and-visualize-a-correlation-matrix-using-r-software)
+
+```{r   }
+# ++++++++++++++++++++++++++++
+# flattenCorrMatrix
+# ++++++++++++++++++++++++++++
+# cormat : matrix of the correlation coefficients
+# pmat : matrix of the correlation p-values
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+    )
+} 
+```
+
+
+<a id="org3a72481"></a>
+
+## Proteins
+
+We select from the normalized data and from the normalized and
+log2-transformed protein data only those samples that are also in the
+RNA data.
+
+
+<a id="org2c2190b"></a>
+
+### Selecting top AD proteins from samples (all, AD, PSP, Control).
+
+```{r   }
+ccol <- c(1:31) # Control columns in 'data_all'
+acol <- c(32:115) # AD columns in 'data_all'
+pcol <- c(116:200) # PSP columns in 'data_all'
+
+## We remove 3 samples that are absent in the transcriptomics.
+acol <- acol[-c(29, 38)]
+pcol <- pcol[-4] 
+```
+
+```{r   }
+## AD proteins in AD samples
+ad_pr_top <- data_all %>%
+  `rownames<-`(.$PIDshort %>% make.unique) %>%
+  filter(rownames(.) %in% rownames(AvsC_top)) %>%
+  ## filter(rownames(.) %in% ad_vs_control_prot$PIDshort) %>%
+  dplyr::select(all_of(acol))
+
+## AD proteins in PSP samples
+psp_pr_top <- data_all %>%
+  `rownames<-`(.$PIDshort %>% make.unique) %>%
+  filter(rownames(.) %in% rownames(AvsC_top)) %>%
+  ## filter(rownames(.) %in% ad_vs_control_prot$PIDshort) %>%
+  dplyr::select(all_of(pcol))
+
+## AD proteins in Control samples
+control_pr_top <- data_all %>%
+  `rownames<-`(.$PIDshort %>% make.unique) %>%
+  filter(rownames(.) %in% rownames(AvsC_top)) %>%
+  ## filter(rownames(.) %in% ad_vs_control_prot$PIDshort) %>%
+  dplyr::select(all_of(ccol)) 
+```
+
+
+<a id="org4fa1f43"></a>
+
+### AD top proteins in all samples
+
+```{r   }
+## data_all contains log2 transformed data
+ad_pr_top_in_all <- data_all %>%
+  `rownames<-`(.$PIDshort %>% make.unique) %>%
+  filter(rownames(.) %in% rownames(AvsC_top)) %>%
+  ## filter(rownames(.) %in% ad_vs_control_prot$PIDshort) %>%
+  dplyr::select(all_of(c(acol, pcol, ccol))) 
+```
+
+```{r   }
+ad_pr_top_cor_all <- rcorr(t(as.matrix(ad_pr_top_in_all)), t(as.matrix(ad_pr_top_in_all)),
+                     type = "spearman") 
+```
+
+```{r   }
+png("./figs_cor/prot_ad_in_all.png", width = 2000, height = 2000, res = 300)
+corrplot(ad_pr_top_cor_all$r[1:nrow(ad_pr_top), 1:nrow(ad_pr_top)],
+         p.mat = ad_pr_top_cor_all$P[1:nrow(ad_pr_top), 1:nrow(ad_pr_top)],
+         sig.level = 0.05, insig = "blank",
+         ## type="upper", order="hclust",
+         col = colorRampPalette(c("darkblue", "white", "green"))(200),
+         tl.col = "black", tl.cex = 0.4, tl.srt = 45)
+mytitle = "Number of samples: AD = 82, PSP = 84, Control = 31"
+mtext(side=3, line=2, at=-0.07, adj=0, cex=1, mytitle)
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_cor/prot_ad_in_all.png") 
+```
+
+In the above plot, correlations with p-value > 0.05 are shown as blank
+as they are considered insignificant.
+
+```{r   }
+png("./figs_cor/prot_ad_in_all_numb.png", width = 2000, height = 2000, res = 300)
+corrplot(ad_pr_top_cor_all$r[1:nrow(ad_pr_top), 1:nrow(ad_pr_top)],
+         p.mat = ad_pr_top_cor_all$P[1:nrow(ad_pr_top), 1:nrow(ad_pr_top)],
+         sig.level = 0.05, insig = "blank",
+         ## type="upper", order="hclust",
+         method = "number", number.cex = 0.2,
+         col = colorRampPalette(c("darkblue", "white", "green"))(200),
+         tl.col = "black", tl.cex = 0.4, tl.srt = 45)
+mytitle = "Number of samples: AD = 82, PSP = 84, Control = 31"
+mtext(side=3, line=2, at=-0.07, adj=0, cex=1, mytitle)
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_cor/prot_ad_in_all_numb.png") 
+```
+
+
+<a id="org5f9c635"></a>
+
+#### Save to CSV
+
+Save correlation coefficients.
+
+```{r   }
+ad_top_r_all <- ad_pr_top_cor_all$r[1:nrow(ad_pr_top), 1:nrow(ad_pr_top)] %>%
+  data.frame() %>%
+  filter(rownames(.) %in% rownames(AvsC_top))
+  ## filter(rownames(.) %in% ad_vs_control_prot$PIDshort)
+
+write.csv(ad_top_r_all, "./results_cor/ad_prot_cor_coeffs_all.csv") 
+```
+
+Save correlation coefficient&rsquo;s alongside with p-values
+
+```{r   }
+write.csv(flattenCorrMatrix(cormat = ad_pr_top_cor_all$r[1:nrow(ad_pr_top),
+                                                     1:nrow(ad_pr_top)],
+                            pmat = ad_pr_top_cor_all$P[1:nrow(ad_pr_top),
+                                                   1:nrow(ad_pr_top)]),
+          "./results_cor/ad_prot_cor_coeffs+p-values_all.csv") 
+```
+
+
+<a id="orga98faa0"></a>
+
+## Transcripts
+
+```{r   }
+transcripts_norm <- cpm(dgeObj, log = TRUE,
+                        normalized.lib.sizes = TRUE) %>%
+  data.frame() 
+```
+
+
+<a id="orgda52476"></a>
+
+### AD top genes in all samples
+
+```{r   }
+ad_all_tr_top <- transcripts_norm[c(ad_cols, psp_cols, control_cols)] %>%
+  filter(rownames(.)  %in%  ad_vs_control_top_tr$TranscriptIDs) %>%
+  `rownames<-`(rownames(all_samples_ad_vs_control_tr))
+
+ad_tr_top_cor_all <- rcorr(t(as.matrix(ad_all_tr_top)),
+                     t(as.matrix(ad_all_tr_top)),
+                     type = "spearman") 
+```
+
+```{r   }
+png("./figs_cor/transcr_ad_in_all.png", width = 2000, height = 2000, res = 300)
+corrplot(ad_tr_top_cor_all$r[1:nrow(all_samples_ad_vs_control_tr),
+                         1:nrow(all_samples_ad_vs_control_tr)],
+         p.mat = ad_tr_top_cor_all$P[1:nrow(all_samples_ad_vs_control_tr),
+                                 1:nrow(all_samples_ad_vs_control_tr)],
+         ## type="upper", order="hclust",
+         sig.level = 0.05, insig = "blank",
+         col = colorRampPalette(c("darkblue", "white", "green"))(200),
+         tl.col = "black", tl.cex = 0.4, tl.srt = 45)
+mytitle = "Number of samples: AD = 82, PSP = 84, Control = 31"
+mtext(side=3, line=2, at=-0.07, adj=0, cex=1, mytitle)
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_cor/transcr_ad_in_all.png") 
+```
+
+In the above plot, correlations with p-value > 0.05 are shown as blank as they are considered insignificant.
+
+```{r   }
+png("./figs_cor/transcr_ad_in_all_numb.png", width = 2000, height = 2000, res = 300)
+corrplot(ad_tr_top_cor_all$r[1:nrow(all_samples_ad_vs_control_tr),
+                         1:nrow(all_samples_ad_vs_control_tr)],
+         p.mat = ad_tr_top_cor_all$P[1:nrow(all_samples_ad_vs_control_tr),
+                                 1:nrow(all_samples_ad_vs_control_tr)],
+           sig.level = 0.05, insig = "blank",
+           ## type="upper", order="hclust",
+           method = "number", number.cex = 0.2,
+           col = colorRampPalette(c("darkblue", "white", "green"))(200),
+           tl.col = "black", tl.cex = 0.4, tl.srt = 45)
+mytitle = "Number of samples: AD = 82, PSP = 84, Control = 31"
+mtext(side=3, line=2, at=-0.07, adj=0, cex=1, mytitle)
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_cor/transcr_ad_in_all_numb.png") 
+```
+
+
+<a id="org77e10fd"></a>
+
+#### Save to CSV
+
+Save correlation coefficients.
+
+```{r   }
+write.csv(ad_tr_top_cor_all$r[1:nrow(all_samples_ad_vs_control_tr),
+                          1:nrow(all_samples_ad_vs_control_tr)],
+          "./results_cor/ad_transcripts_cor_r_all.csv")
+
+## knitr::kable(ad_tr_top_cor$r[1:nrow(all_samples_ad_vs_control_tr), 1:nrow(all_samples_ad_vs_control_tr)], caption = "Correlation coefficients for top 25 AD genes") 
+```
+
+Save correlation coefficient&rsquo;s p-values
+
+```{r   }
+
+write.csv(flattenCorrMatrix(cormat = ad_tr_top_cor_all$r,
+                            pmat = ad_tr_top_cor_all$P),
+          "./results_cor/ad_transcripts_cor_coeffs+p-values_all.csv")
+
+## knitr::kable(ad25P, caption = "Correlation coefficient's p-values for top 25 AD proteins") 
+```
+
+
+<a id="orgc1e5c3a"></a>
+
+## Proteins vs Transcripts
+
+
+<a id="org780421a"></a>
+
+### AD top proteins and genes (all samples)
+
+```{r   }
+i <- nrow(ad_pr_top_in_all)
+j <- nrow(ad_all_tr_top)
+
+ad_pr_tr_cor_all <- rcorr(t(as.matrix(ad_all_tr_top)),
+      t(as.matrix(ad_pr_top_in_all)),
+      type = "spearman")
+
+
+## write_rds(list(A=A, B=B), "./ab.rds")
+## ab <- readRDS("./ab.rds")
+## rcorr(t(T).t(P))$r[number_of_transcripts+1 : number_of_transcripts+number_of_proteins,
+##                    1: number_of_transcripts] 
+```
+
+```{r   }
+png("./figs_cor/trpr_ad_in_all.png", width = 2000, height = 3300, res = 300)
+corrplot(ad_pr_tr_cor_all$r[(j+1) : (i+j), 1:j],
+         p.mat = ad_pr_tr_cor_all$P[(j+1) : (i+j), 1:j],
+         ## type="upper", order="hclust",
+         sig.level = 0.05, insig = "blank",
+         col = colorRampPalette(c("darkblue", "white", "green"))(200),
+         tl.col = "black", tl.cex = 0.3, tl.srt = 45)
+mytitle = "Number of samples: AD = 82, PSP = 84, Control = 31"
+mtext(side=3, line=2, at=-0.07, adj=0, cex=1, mytitle)
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_cor/trpr_ad_in_all.png") 
+```
+
+In the above plot, correlations with p-value > 0.05 are shown as blank
+as they are considered insignificant.
+
+```{r   }
+png("./figs_cor/trpr_ad_in_all_numb.png", width = 2000, height = 3300, res = 300)
+corrplot(ad_pr_tr_cor_all$r[(j+1) : (i+j), 1:j],
+         p.mat = ad_pr_tr_cor_all$P[(j+1) : (i+j), 1:j],
+         ## type="upper", order="hclust",
+         sig.level = 0.05, insig = "blank",
+         method = "number", number.cex = 0.2,
+         col = colorRampPalette(c("darkblue", "white", "green"))(200),
+         tl.col = "black", tl.cex = 0.3, tl.srt = 45)
+mytitle = "Number of samples: AD = 82, PSP = 84, Control = 31"
+mtext(side=3, line=2, at=-0.07, adj=0, cex=1, mytitle)
+dev.off() 
+```
+
+```{r  echo=FALSE, label="", fig.show='asis', fig.cap="" }
+include_graphics("./figs_cor/trpr_ad_in_all_numb.png") 
+```
+
+
+<a id="orgeef50de"></a>
+
+#### Save to CSV
+
+Save correlation coefficients.
+
+```{r   }
+write.csv(ad_pr_tr_cor_all$r[(j+1) : (i+j), 1:j],
+          "./results_cor/ad_prot_transcr_cor_r_all.csv") 
+```
+
+Save correlation coefficient&rsquo;s p-values
+
+```{r   }
+write.csv(flattenCorrMatrix(cormat = ad_pr_tr_cor_all$r[(j+1) : (i+j), 1:j],
+                            pmat = ad_pr_tr_cor_all$P[(j+1) : (i+j), 1:j]),
+          "./results_cor/ad_prot_transcr_cor_coeffs+p-values_all.csv") 
+```
+
